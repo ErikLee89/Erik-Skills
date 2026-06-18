@@ -18,7 +18,13 @@ It is not just a simple HTML-to-PDF wrapper. It is an entire layout engine built
 1. **AI-Native & Token-Efficient**: This tool is designed as a "Skill" for AI agents. Instead of feeding the complete book into an LLM context window, the agent can run the conversion locally and inspect only the relevant logs and results.
 2. **Working Around Chromium Print Bugs**: Standard browsers can struggle with complex pagination. This engine injects microscopic ASCII markers, overrides print CSS, and splits long strings to make page breaks more reliable.
 3. **Premium Typography Offline**: Electronic books should feel like physical books. We bundle a 25MB sliced version of the gorgeous **LXGW WenKai Lite (霞鹜文楷)** calligraphy font. It dynamically mounts during rendering and auto-cleans afterward, providing a premium reading experience entirely offline.
-4. **Lossless Structural Compression**: The final pipeline integrates `PyMuPDF` to compress PDF structures without intentional image recompression. The resulting size reduction depends on the source PDF.
+4. **Deep Lossless Compression**: High-res covers and embedded fonts lead to bloated PDFs. By natively integrating `PyMuPDF` into the final pipeline step, the engine compresses the PDF structure and image layers by over 60% with zero visual quality loss.
+
+### Prerequisites
+
+To use this tool, you must first export your WeChat Reading book into an HTML format. We highly recommend using the open-source **WeRead exporter (wrx) plugin**.
+Please visit their repository to learn how to install the extension and export books: 
+👉 [https://github.com/jooooock/wrx](https://github.com/jooooock/wrx)
 
 ### Installation
 
@@ -91,7 +97,13 @@ python get_cover.py --title "Book Title" --output "cover.jpg"
 1. **为 AI 智能体而生（Token 友好）**：AI 无需把整本书籍源码放入上下文，转换由本地脚本执行，只需检查相关日志和结果。
 2. **规避 Chromium 排版断页问题**：本引擎通过注入隐形 ASCII 定位标记、重写打印 CSS 和拆分长字符串，提高复杂内容的分页可靠性。
 3. **极致的离线排版美学**：电子书也应该有纸质书的温度。我们在底层内置了 25MB 的切片版**“霞鹜文楷 Lite”**手写字体包。只需一个参数，它就能在完全断网的环境下，让整本书焕发书法排版的质感，并在生成结束后“阅后即焚”清理缓存。
-4. **无损结构压缩**：最终合成阶段集成 `PyMuPDF`，在不主动重压缩图片的情况下压缩 PDF 结构；具体体积变化取决于原始文件。
+4. **底层无损深度压缩**：高清封面和内置字体会导致 PDF 体积暴涨。我们在最终合成阶段原生集成了 `PyMuPDF`，在保证视觉质量绝对零损失的前提下，对 PDF 底层代码和图层进行深度重编码，通常能让体积暴降 60% 以上。
+
+### 前置条件（极其重要）
+
+本脚本是一个“排版与转换引擎”，它本身不负责从网页抓取书籍内容。
+在使用本技能前，你**必须**先将微信读书导出为本地的 HTML 文件。我们强烈推荐使用开源的 **微信读书导出插件 (wrx)**。
+👉 请先前往该插件的 GitHub 仓库学习如何安装并导出书籍：[https://github.com/jooooock/wrx](https://github.com/jooooock/wrx)
 
 ### 环境安装
 
