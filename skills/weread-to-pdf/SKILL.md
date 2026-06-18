@@ -69,7 +69,7 @@ By default, this will save the cover to `[书名]_封面.jpg` in your current wo
 ## Requirements
 
 ```powershell
-pip install playwright pdfplumber pypdf reportlab beautifulsoup4 requests pillow
+pip install playwright pdfplumber pypdf reportlab beautifulsoup4 requests pillow pymupdf
 python -m playwright install chromium
 ```
 
