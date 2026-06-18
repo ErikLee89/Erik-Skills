@@ -33,6 +33,10 @@ python convert.py --input "book.html" --step cover  # Only update cover, then ex
 python convert.py --input "book.html" --step html   # Update cover + generate web reader, skip PDF
 python convert.py --input "book.html" --step pdf    # Update cover + generate PDF, skip web reader
 python convert.py --input "book.html" --step all    # Default: Do everything (cover + html + pdf)
+
+# Advanced Layout & Optimization
+python convert.py --input "book.html" --font lxgw   # Inject bundled LXGW WenKai Lite font (cleans up automatically)
+python convert.py --input "book.html" --no-compress # Disable default PyMuPDF compression
 ```
 
 ## PDF Output Location
@@ -94,6 +98,8 @@ python -m playwright install chromium
 | Prevent orphaned content | CSS `page-break-inside: avoid;` keeps tables, images, and code blocks (`pre`, `code`) intact across pages |
 | Graceful write lock fallback | `PermissionError` handling with timestamp backup outputs |
 | HTML Web Reader View | Generates a persistent `index_read.html` reader view with a warm cream theme, draggable sidebar, decoupled folder toggles, SVG icons, and scroll syncing |
+| Native PDF Compression | Default `PyMuPDF` compression drastically reduces PDF file size (>60%) losslessly. Use `--no-compress` to skip |
+| Offline Font Injection | `--font lxgw` dynamically deploys a bundled 25MB `lxgw-wenkai-lite` webfont into the book assets for rendering, then auto-cleans it upon exit |
 
 ## Pipeline
 

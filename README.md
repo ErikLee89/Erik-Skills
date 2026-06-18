@@ -22,6 +22,8 @@ A highly specialized HTML-to-PDF book converter designed specifically for WeChat
 - **Modular Execution Steps:** Run the conversion pipeline in modular steps (`--step cover`, `--step html`, `--step pdf`) to skip heavy Chromium processing and generate web readers instantly.
 - **Web Reader Cleaner & Enhancer:** Strips away decorative but distracting elements (like "bleed-pic" chapter headers) in the `index_read.html` reader view. Automatically prevents layout shifts during native image loading by computing absolute aspect ratios.
 - **Perfect Chinese Encoding:** Safely preserves Chinese colons (`：`) and other characters in output filenames without mangling them.
+- **Native PDF Compression:** Automatically compresses the output PDF using PyMuPDF, drastically reducing file size (often by >60%) with zero quality loss. Can be bypassed via `--no-compress`.
+- **Offline LXGW WenKai Injection:** Bundled with the gorgeous LXGW WenKai Lite (霞鹜文楷) webfont. Use `--font lxgw` to instantly transform the entire book into a premium calligraphy-style layout, completely offline.
 
 ---
 
@@ -43,3 +45,5 @@ A highly specialized HTML-to-PDF book converter designed specifically for WeChat
 - **模块化精准运行：** 支持通过 `--step` 参数进行解耦运行（如仅查验封面、仅生成网页阅读器、仅生成PDF），完美跳过不需要的耗时阶段，瞬间秒开网页版。
 - **网页阅读器净化与增强：** 针对生成的网页版阅读器（`index_read.html`），自动剔除会干扰视觉的微信读书专属“章首大图”（bleed-pic），并在底层注入原生物理高宽比属性，彻底消灭懒加载带来的布局侧边栏错位抖动问题。
 - **完美中文编码：** 支持 Windows 原生文件命名特性，不再将书名中的中文全角冒号（`：`）强制转换为下划线，保持原汁原味。
+- **无损深度压缩：** 默认全自动调用 PyMuPDF 对生成的 PDF 进行底图层无损压缩，体积通常暴降 60%+ 以上。支持通过 `--no-compress` 参数保留原始体积。
+- **内置霞鹜文楷：** 技能仓库原生内置 25MB 切片版“霞鹜文楷 Lite”字体包。只需追加 `--font lxgw`，即可在纯离线环境下瞬间让整本电子书焕发极具呼吸感的手写排版质感，且底层附带专属字号放大视觉补偿。
