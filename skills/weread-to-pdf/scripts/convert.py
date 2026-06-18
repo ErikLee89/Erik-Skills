@@ -1091,6 +1091,9 @@ def preprocess_html(src: Path, dst: Path, chapters: list,
     body, h1, h2, h3, h4, h5, h6, .readerChapterContent, p, span, div, a {
         font-family: "LXGW WenKai Lite", "LXGW WenKai", sans-serif !important;
     }
+    .readerChapterContent {
+        font-size: 105% !important;
+    }
 </style>
 """
         head_tag = soup.find('head')
