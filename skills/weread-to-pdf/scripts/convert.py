@@ -1086,10 +1086,9 @@ def preprocess_html(src: Path, dst: Path, chapters: list,
 
     if font_name == 'lxgw':
         lxgw_css = """
-<link rel="stylesheet" href="./assets/fonts/lxgw-wenkai-lite-webfont/style.css">
 <style>
     body, h1, h2, h3, h4, h5, h6, .readerChapterContent, p, span, div, a {
-        font-family: "LXGW WenKai Lite", sans-serif !important;
+        font-family: "LXGW WenKai Lite", "LXGW WenKai", sans-serif !important;
     }
 </style>
 """
@@ -1411,14 +1410,6 @@ async def main_async(args):
 
     step = getattr(args, 'step', 'all')
     font_name = getattr(args, 'font', '')
-
-    if font_name == 'lxgw':
-        skill_font_dir = Path(__file__).resolve().parent.parent / 'assets' / 'fonts' / 'lxgw-wenkai-lite-webfont'
-        book_font_dir = html_in.parent / 'assets' / 'fonts' / 'lxgw-wenkai-lite-webfont'
-        if skill_font_dir.exists() and not book_font_dir.exists():
-            print('[*] Copying LXGW WenKai Lite font package to book assets...')
-            import shutil
-            shutil.copytree(skill_font_dir, book_font_dir)
 
     if step == 'cover':
         print('[OK] Done! (--step cover finished)')
