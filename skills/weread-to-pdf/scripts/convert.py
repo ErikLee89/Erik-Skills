@@ -1417,7 +1417,6 @@ async def main_async(args):
         book_font_dir = html_in.parent / 'assets' / 'fonts' / 'lxgw-wenkai-lite-webfont'
         if skill_font_dir.exists() and not book_font_dir.exists():
             print('[*] Copying LXGW WenKai Lite font package to book assets...')
-            import shutil
             shutil.copytree(skill_font_dir, book_font_dir)
 
     if step == 'cover':
