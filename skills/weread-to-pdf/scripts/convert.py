@@ -1470,6 +1470,12 @@ async def main_async(args):
         pdf_stage.unlink(missing_ok=True)
         if temp_dir and temp_dir.exists():
             shutil.rmtree(temp_dir)
+        # Cleanup font if it was copied
+        if getattr(args, 'font', '') == 'lxgw':
+            book_font_dir = html_in.parent / 'assets' / 'fonts' / 'lxgw-wenkai-lite-webfont'
+            if book_font_dir.exists():
+                print('[*] Cleaning up font residue from book assets...')
+                shutil.rmtree(book_font_dir, ignore_errors=True)
 
 
 def main():
