@@ -98,7 +98,7 @@ python -m playwright install chromium
 | Prevent orphaned content | CSS `page-break-inside: avoid;` keeps tables, images, and code blocks (`pre`, `code`) intact across pages |
 | Graceful write lock fallback | `PermissionError` handling with timestamp backup outputs |
 | HTML Web Reader View | Generates a persistent `index_read.html` reader view with a warm cream theme, draggable sidebar, decoupled folder toggles, SVG icons, and scroll syncing |
-| Native PDF Compression | Default `PyMuPDF` compression drastically reduces PDF file size (>60%) losslessly. Use `--no-compress` to skip |
+| Native PDF Compression | Default `PyMuPDF` compression reduces PDF structure size losslessly when possible; results depend on the source. Use `--no-compress` to skip |
 | Offline Font Injection | `--font lxgw` dynamically deploys a bundled 25MB `lxgw-wenkai-lite` webfont into the book assets for rendering, then auto-cleans it upon exit |
 
 ## Pipeline

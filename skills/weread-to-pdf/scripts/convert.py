@@ -866,6 +866,8 @@ def sync_custom_cover(src: Path, cover_jpg: Path) -> Path | None:
         try:
             shutil.copyfile(cover_jpg, target)
         except PermissionError:
+            if not target.exists():
+                raise
             import stat
             target.chmod(target.stat().st_mode | stat.S_IWRITE)
             shutil.copyfile(cover_jpg, target)

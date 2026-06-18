@@ -1,5 +1,5 @@
-# 📚 WeRead to PDF: Ultimate Typography Engine
-**微信读书导出 HTML 到极致排版 PDF 的终极转换引擎**
+# 📚 WeRead to PDF: Typography Engine
+**微信读书导出 HTML 到 PDF 的排版转换引擎**
 
 [English](#english) | [中文](#中文)
 
@@ -9,16 +9,16 @@
 ## English
 
 ### What is this?
-`weread-to-pdf` is a highly specialized, production-grade script designed to convert exported HTML books (especially from WeChat Reading / WeRead) into perfectly paginated, typography-focused PDF documents. 
+`weread-to-pdf` is a specialized script designed to convert exported HTML books (especially from WeChat Reading / WeRead) into carefully paginated, typography-focused PDF documents.
 
 It is not just a simple HTML-to-PDF wrapper. It is an entire layout engine built on top of Chromium, designed to solve the most painful edge cases of web-to-print conversion.
 
 ### Why does this exist? (Core Philosophies)
 
-1. **AI-Native & Zero Token Cost**: This tool is designed as a "Skill" for AI agents. Instead of feeding a 200,000-word book into an LLM's context window (wasting massive amounts of tokens and risking truncation), the AI can simply execute this script blindly in the background. The script handles all the heavy lifting automatically.
-2. **Defeating Chromium's Print Bugs**: Standard browsers notoriously fail at complex pagination. Long URLs bleed off the page, code blocks split across pages, and images detach from their captions. This engine injects microscopic ASCII markers, dynamically overrides CSS, and splits long strings to ensure **flawless page-break behavior**.
+1. **AI-Native & Token-Efficient**: This tool is designed as a "Skill" for AI agents. Instead of feeding the complete book into an LLM context window, the agent can run the conversion locally and inspect only the relevant logs and results.
+2. **Working Around Chromium Print Bugs**: Standard browsers can struggle with complex pagination. This engine injects microscopic ASCII markers, overrides print CSS, and splits long strings to make page breaks more reliable.
 3. **Premium Typography Offline**: Electronic books should feel like physical books. We bundle a 25MB sliced version of the gorgeous **LXGW WenKai Lite (霞鹜文楷)** calligraphy font. It dynamically mounts during rendering and auto-cleans afterward, providing a premium reading experience entirely offline.
-4. **Deep Lossless Compression**: High-res covers and embedded fonts lead to bloated PDFs. By natively integrating `PyMuPDF` into the final pipeline step, the engine compresses the PDF structure and image layers by over 60% with zero visual quality loss.
+4. **Lossless Structural Compression**: The final pipeline integrates `PyMuPDF` to compress PDF structures without intentional image recompression. The resulting size reduction depends on the source PDF.
 
 ### Installation
 
@@ -82,16 +82,16 @@ python get_cover.py --title "Book Title" --output "cover.jpg"
 ## 中文
 
 ### 这是什么？
-`weread-to-pdf` 是一个高度定制化、生产环境级别的排版脚本。它的核心使命，是将导出的 HTML 电子书（尤其是微信读书导出文件）完美转化为具备极佳纸质书阅读质感的 PDF 文档。
+`weread-to-pdf` 是一个高度定制化的排版脚本，用于将导出的 HTML 电子书（尤其是微信读书导出文件）转化为注重分页和阅读体验的 PDF 文档。
 
 它绝不是一个简单的“调用浏览器打印 PDF”的套壳脚本。它是建立在 Chromium 之上的完整排版引擎，专门用于解决“网页转打印”中最让人头疼的各种边缘排版事故。
 
 ### 为什么要做这个项目？（核心设计理念）
 
-1. **为 AI 智能体而生（零 Token 消耗）**：这是一个标准的 AI “技能（Skill）”。如果是传统 AI，你可能需要把几十万字的书籍源码塞进上下文里让它处理，这不仅极其耗费 Token，还会导致模型“忘词”或崩溃。而这个脚本允许 AI 在后台**“盲跑”**，AI 只需要敲下一行运行命令，剩下的脏活累活全由脚本在本地自动完成。
-2. **彻底解决 Chromium 排版断页 Bug**：原生浏览器在处理复杂打印断页时极其拉胯（长链接冲出纸张边缘、代码块被切成两半、插图和文字描述天各一方）。本引擎通过底层注入隐形 ASCII 定位标记、动态重写 CSS 以及长字符切片黑科技，实现了**完美的防断页保护**。
+1. **为 AI 智能体而生（Token 友好）**：AI 无需把整本书籍源码放入上下文，转换由本地脚本执行，只需检查相关日志和结果。
+2. **规避 Chromium 排版断页问题**：本引擎通过注入隐形 ASCII 定位标记、重写打印 CSS 和拆分长字符串，提高复杂内容的分页可靠性。
 3. **极致的离线排版美学**：电子书也应该有纸质书的温度。我们在底层内置了 25MB 的切片版**“霞鹜文楷 Lite”**手写字体包。只需一个参数，它就能在完全断网的环境下，让整本书焕发书法排版的质感，并在生成结束后“阅后即焚”清理缓存。
-4. **底层无损深度压缩**：高清封面和内置字体会导致 PDF 体积暴涨。我们在最终合成阶段原生集成了 `PyMuPDF`，在保证视觉质量绝对零损失的前提下，对 PDF 底层代码和图层进行深度重编码，通常能让体积暴降 60% 以上。
+4. **无损结构压缩**：最终合成阶段集成 `PyMuPDF`，在不主动重压缩图片的情况下压缩 PDF 结构；具体体积变化取决于原始文件。
 
 ### 环境安装
 
