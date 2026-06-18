@@ -1254,7 +1254,7 @@ def build_overlay(total: int, chapters: list, pmap: dict, book_title: str) -> by
 # ─────────────────────────────────────────────────────────────
 
 def merge_final(base: Path, overlay_bytes: bytes,
-                chapters: list, pmap: dict, ymap: dict, out_pdf: Path):
+                chapters: list, pmap: dict, ymap: dict, out_pdf: Path, compress: bool = False):
     from pypdf import PdfWriter, PdfReader
     from pypdf.generic import Fit
     br  = PdfReader(str(base))
@@ -1302,7 +1302,7 @@ def merge_final(base: Path, overlay_bytes: bytes,
     try:
         with open(out_pdf, 'wb') as f:
             w.write(f)
-        print(f'[OK] PDF saved: {out_pdf}  ({out_pdf.stat().st_size/1e6:.1f} MB)')
+        final_path = out_pdf
     except PermissionError:
         import time
         suffix = int(time.time())
@@ -1311,7 +1311,24 @@ def merge_final(base: Path, overlay_bytes: bytes,
         print(f'[*] Attempting to write to fallback path: {fallback_pdf.name} ...')
         with open(fallback_pdf, 'wb') as f:
             w.write(f)
-        print(f'[OK] PDF saved to fallback: {fallback_pdf}  ({fallback_pdf.stat().st_size/1e6:.1f} MB)')
+        final_path = fallback_pdf
+
+    if compress:
+        try:
+            import fitz
+            import os
+            print(f'[*] Compressing {final_path.name} with PyMuPDF ...')
+            doc = fitz.open(str(final_path))
+            temp_path = final_path.with_name(f"{final_path.stem}_temp.pdf")
+            doc.save(str(temp_path), garbage=4, deflate=True)
+            doc.close()
+            os.replace(temp_path, final_path)
+        except ImportError:
+            print('[WARNING] PyMuPDF (fitz) is not installed. Install with: pip install pymupdf')
+        except Exception as e:
+            print(f'[WARNING] Compression failed: {e}')
+
+    print(f'[OK] PDF ready: {final_path}  ({final_path.stat().st_size/1e6:.1f} MB)')
 
 
 # ─────────────────────────────────────────────────────────────
@@ -1377,19 +1394,30 @@ async def main_async(args):
     if cover_jpg:
         if not sync_custom_cover(html_in, cover_jpg):
             print('[WARNING] Could not update the image referenced by .custom-cover; using the rendering fallback.')
+
+    step = getattr(args, 'step', 'all')
+    if step == 'cover':
+        print('[OK] Done! (--step cover finished)')
+        return
                 
     # For PDF generation: clean preprocessed HTML (no sidebar)
-    preprocess_html(html_in, html_clean, chapters, book_title, cover_jpg, inject_sidebar=False)
+    if step in ('all', 'pdf'):
+        preprocess_html(html_in, html_clean, chapters, book_title, cover_jpg, inject_sidebar=False)
 
     # For web reader view: preprocessed HTML with sidebar injected
-    persistent_html = html_in.parent / 'index_read.html'
-    try:
-        preprocess_html(html_in, persistent_html, chapters, book_title, cover_jpg, inject_sidebar=True)
-        if cover_jpg and not sync_custom_cover(persistent_html, cover_jpg):
-            print('[WARNING] Could not update the image referenced by .custom-cover in index_read.html.')
-        print(f'[OK] Saved preprocessed HTML reader view to: {persistent_html.name}')
-    except Exception as e:
-        print(f'[WARNING] Could not save persistent HTML copy: {e}')
+    if step in ('all', 'html'):
+        persistent_html = html_in.parent / 'index_read.html'
+        try:
+            preprocess_html(html_in, persistent_html, chapters, book_title, cover_jpg, inject_sidebar=True)
+            if cover_jpg and not sync_custom_cover(persistent_html, cover_jpg):
+                print('[WARNING] Could not update the image referenced by .custom-cover in index_read.html.')
+            print(f'[OK] Saved preprocessed HTML reader view to: {persistent_html.name}')
+        except Exception as e:
+            print(f'[WARNING] Could not save persistent HTML copy: {e}')
+
+    if step == 'html':
+        print('[OK] Done! (--step html finished)')
+        return
 
     try:
         engine = getattr(args, 'engine', 'chromium')
@@ -1409,7 +1437,7 @@ async def main_async(args):
             print(f'    p.{pmap.get(ch["id"],"?"):>4}  {ys}  {ch["title"]}')
 
         overlay = build_overlay(total, chapters, pmap, book_title)
-        merge_final(pdf_stage, overlay, chapters, pmap, ymap, pdf_out)
+        merge_final(pdf_stage, overlay, chapters, pmap, ymap, pdf_out, compress=getattr(args, 'compress', False))
         print('[OK] Done!')
 
     finally:
@@ -1431,6 +1459,9 @@ def main():
     p.add_argument('--format', default='A4',  help='Page format: A4, Letter, A5, etc.')
     p.add_argument('--engine', default='chromium', choices=['chromium', 'weasyprint'],
                    help='Rendering engine: chromium (default, better CSS) or weasyprint (seamless copy-paste)')
+    p.add_argument('--compress', action='store_true', help='Compress output PDF with PyMuPDF (requires pip install pymupdf)')
+    p.add_argument('--step', default='all', choices=['all', 'cover', 'html', 'pdf'],
+                   help='Execution step: cover (only update cover), html (generate index_read.html), pdf (generate PDF), or all (default)')
     args = p.parse_args()
     asyncio.run(main_async(args))
 

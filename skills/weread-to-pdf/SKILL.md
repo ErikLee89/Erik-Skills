@@ -25,6 +25,11 @@ python convert.py --input "book_folder/index.html" --output "custom/output.pdf"
 
 # Different page size
 python convert.py --zip "book.zip" --format Letter
+
+# Modular execution (skip stages to save time)
+python convert.py --input "book.html" --step cover  # Only download and update cover
+python convert.py --input "book.html" --step html   # Only generate web reader, skip PDF
+python convert.py --input "book.html" --step pdf    # Only generate PDF, skip web reader
 ```
 
 ## PDF Output Location
