@@ -880,7 +880,7 @@ def sync_custom_cover(src: Path, cover_jpg: Path) -> Path | None:
 
 def preprocess_html(src: Path, dst: Path, chapters: list,
                     book_title: str, cover_jpg: Path = None,
-                    inject_sidebar: bool = False):
+                    inject_sidebar: bool = False, font_name: str = ''):
 
     from bs4 import BeautifulSoup
     html = src.read_text(encoding='utf-8')
@@ -1083,6 +1083,19 @@ def preprocess_html(src: Path, dst: Path, chapters: list,
         # 替换原文本节点
         new_soup = BeautifulSoup(new_html, 'html.parser')
         text_node.replace_with(new_soup)
+
+    if font_name == 'lxgw':
+        lxgw_css = """
+<link rel="stylesheet" href="./assets/fonts/lxgw-wenkai-lite-webfont/style.css">
+<style>
+    body, h1, h2, h3, h4, h5, h6, .readerChapterContent, p, span, div, a {
+        font-family: "LXGW WenKai Lite", sans-serif !important;
+    }
+</style>
+"""
+        head_tag = soup.find('head')
+        if head_tag:
+            head_tag.append(BeautifulSoup(lxgw_css, 'html.parser'))
 
     # Convert back to string
     html = str(soup)
@@ -1397,19 +1410,29 @@ async def main_async(args):
             print('[WARNING] Could not update the image referenced by .custom-cover; using the rendering fallback.')
 
     step = getattr(args, 'step', 'all')
+    font_name = getattr(args, 'font', '')
+
+    if font_name == 'lxgw':
+        skill_font_dir = Path(__file__).resolve().parent.parent / 'assets' / 'fonts' / 'lxgw-wenkai-lite-webfont'
+        book_font_dir = html_in.parent / 'assets' / 'fonts' / 'lxgw-wenkai-lite-webfont'
+        if skill_font_dir.exists() and not book_font_dir.exists():
+            print('[*] Copying LXGW WenKai Lite font package to book assets...')
+            import shutil
+            shutil.copytree(skill_font_dir, book_font_dir)
+
     if step == 'cover':
         print('[OK] Done! (--step cover finished)')
         return
                 
     # For PDF generation: clean preprocessed HTML (no sidebar)
     if step in ('all', 'pdf'):
-        preprocess_html(html_in, html_clean, chapters, book_title, cover_jpg, inject_sidebar=False)
+        preprocess_html(html_in, html_clean, chapters, book_title, cover_jpg, inject_sidebar=False, font_name=font_name)
 
     # For web reader view: preprocessed HTML with sidebar injected
     if step in ('all', 'html'):
         persistent_html = html_in.parent / 'index_read.html'
         try:
-            preprocess_html(html_in, persistent_html, chapters, book_title, cover_jpg, inject_sidebar=True)
+            preprocess_html(html_in, persistent_html, chapters, book_title, cover_jpg, inject_sidebar=True, font_name=font_name)
             if cover_jpg and not sync_custom_cover(persistent_html, cover_jpg):
                 print('[WARNING] Could not update the image referenced by .custom-cover in index_read.html.')
             print(f'[OK] Saved preprocessed HTML reader view to: {persistent_html.name}')
@@ -1461,6 +1484,7 @@ def main():
     p.add_argument('--engine', default='chromium', choices=['chromium', 'weasyprint'],
                    help='Rendering engine: chromium (default, better CSS) or weasyprint (seamless copy-paste)')
     p.add_argument('--compress', action='store_true', help='Compress output PDF with PyMuPDF (requires pip install pymupdf)')
+    p.add_argument('--font', default='', help='Inject custom font (e.g., "lxgw" for LXGW WenKai Lite)')
     p.add_argument('--step', default='all', choices=['all', 'cover', 'html', 'pdf'],
                    help='Execution step: cover (only update cover), html (generate index_read.html), pdf (generate PDF), or all (default)')
     args = p.parse_args()
