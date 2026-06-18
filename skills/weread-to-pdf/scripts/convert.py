@@ -1086,6 +1086,7 @@ def preprocess_html(src: Path, dst: Path, chapters: list,
 
     if font_name == 'lxgw':
         lxgw_css = """
+<link rel="stylesheet" href="./assets/fonts/lxgw-wenkai-lite-webfont/style.css">
 <style>
     body, h1, h2, h3, h4, h5, h6, .readerChapterContent, p, span, div, a {
         font-family: "LXGW WenKai Lite", "LXGW WenKai", sans-serif !important;
@@ -1411,6 +1412,14 @@ async def main_async(args):
     step = getattr(args, 'step', 'all')
     font_name = getattr(args, 'font', '')
 
+    if font_name == 'lxgw':
+        skill_font_dir = Path(__file__).resolve().parent.parent / 'assets' / 'fonts' / 'lxgw-wenkai-lite-webfont'
+        book_font_dir = html_in.parent / 'assets' / 'fonts' / 'lxgw-wenkai-lite-webfont'
+        if skill_font_dir.exists() and not book_font_dir.exists():
+            print('[*] Copying LXGW WenKai Lite font package to book assets...')
+            import shutil
+            shutil.copytree(skill_font_dir, book_font_dir)
+
     if step == 'cover':
         print('[OK] Done! (--step cover finished)')
         return
@@ -1452,7 +1461,8 @@ async def main_async(args):
             print(f'    p.{pmap.get(ch["id"],"?"):>4}  {ys}  {ch["title"]}')
 
         overlay = build_overlay(total, chapters, pmap, book_title)
-        merge_final(pdf_stage, overlay, chapters, pmap, ymap, pdf_out, compress=getattr(args, 'compress', False))
+        compress_pdf = not getattr(args, 'no_compress', False)
+        merge_final(pdf_stage, overlay, chapters, pmap, ymap, pdf_out, compress=compress_pdf)
         print('[OK] Done!')
 
     finally:
@@ -1474,7 +1484,7 @@ def main():
     p.add_argument('--format', default='A4',  help='Page format: A4, Letter, A5, etc.')
     p.add_argument('--engine', default='chromium', choices=['chromium', 'weasyprint'],
                    help='Rendering engine: chromium (default, better CSS) or weasyprint (seamless copy-paste)')
-    p.add_argument('--compress', action='store_true', help='Compress output PDF with PyMuPDF (requires pip install pymupdf)')
+    p.add_argument('--no-compress', action='store_true', help='Disable PyMuPDF compression to keep raw PDF')
     p.add_argument('--font', default='', help='Inject custom font (e.g., "lxgw" for LXGW WenKai Lite)')
     p.add_argument('--step', default='all', choices=['all', 'cover', 'html', 'pdf'],
                    help='Execution step: cover (only update cover), html (generate index_read.html), pdf (generate PDF), or all (default)')
