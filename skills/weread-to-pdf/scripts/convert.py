@@ -871,9 +871,10 @@ def sync_custom_cover(src: Path, cover_jpg: Path) -> Path | None:
             shutil.copyfile(cover_jpg, target)
 
     replacement = match.group(1) + match.group(2) + './assets/cover_hd.jpg' + match.group(3)
-    html = html[:match.start()] + replacement + html[match.end():]
-    src.write_text(html, encoding='utf-8')
-    print('[OK] Original HTML cover updated -> ./assets/cover_hd.jpg')
+    new_html = html[:match.start()] + replacement + html[match.end():]
+    if new_html != html:
+        src.write_text(new_html, encoding='utf-8')
+        print(f'[OK] Cover reference updated in -> {src.name}')
     return target
 
 
