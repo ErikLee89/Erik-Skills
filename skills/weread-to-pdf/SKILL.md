@@ -9,7 +9,9 @@ description: Use this skill whenever the user wants to convert an HTML file or a
 
 - **Blind Execution**: When the user requests to convert a book, DO NOT read the target `index.html` file (e.g. via `view_file`) or print its contents to the terminal.
 - **No Manual Parsing**: Do not try to read the HTML to find the cover image name or book title. The `convert.py` script automatically parses the HTML, finds the existing cover, downloads a better one if needed, and swaps it dynamically.
-- **Save Tokens**: Simply execute the `python convert.py` command blindly in the background and wait for it to finish. Only inspect the HTML or logs if the user explicitly reports a bug and asks for debugging.
+- **Save Tokens**: Pass `--log` to write the complete stdout/stderr stream to a persistent UTF-8 `.log` file beside the output PDF. Never return the complete conversion log to the model. After execution, inspect only the process exit code, output-file metadata, and targeted status lines needed to confirm success. Read the full log only when the user explicitly asks to debug a failure.
+- **Predictable Log Path**: For an input folder `path/to/Book/index.html`, save the log as `path/to/Book.conversion.log` (beside the default PDF). Tell the user this path after the run.
+- **Chinese Font Default**: For Chinese books, pass `--font lxgw` unless the user explicitly requests the original font. The script temporarily copies the bundled LXGW WenKai Lite package into the book's `assets/fonts/` directory, uses it for `index_read.html` and PDF rendering, then removes the copied package after conversion.
 
 ## Usage
 
@@ -19,6 +21,9 @@ python convert.py --zip "书名.zip" --title "书名" --cover "封面.jpg"
 
 # From an HTML file (PDF defaults to the parent of the HTML folder)
 python convert.py --input "book_folder/index.html" --title "My Book"
+
+# Recommended agent invocation for a Chinese book: use LXGW and keep logs out of model context
+python convert.py --input "book_folder/index.html" --font lxgw --log "Book.conversion.log"
 
 # Explicit output path overrides the default
 python convert.py --input "book_folder/index.html" --output "custom/output.pdf"
@@ -35,7 +40,7 @@ python convert.py --input "book.html" --step pdf    # Update cover + generate PD
 python convert.py --input "book.html" --step all    # Default: Do everything (cover + html + pdf)
 
 # Advanced Layout & Optimization
-python convert.py --input "book.html" --font lxgw   # Inject bundled LXGW WenKai Lite font (cleans up automatically)
+python convert.py --input "book.html" --font lxgw   # Default for Chinese books; deploys bundled LXGW temporarily and cleans up automatically
 python convert.py --input "book.html" --no-compress # Disable default PyMuPDF compression
 ```
 

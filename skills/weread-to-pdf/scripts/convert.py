@@ -13,6 +13,7 @@ Requirements:
 
 import asyncio
 import argparse
+import contextlib
 import re
 import shutil
 import subprocess
@@ -1496,10 +1497,18 @@ def main():
                    help='Rendering engine: chromium (default, better CSS) or weasyprint (seamless copy-paste)')
     p.add_argument('--no-compress', action='store_true', help='Disable PyMuPDF compression to keep raw PDF')
     p.add_argument('--font', default='', help='Inject custom font (e.g., "lxgw" for LXGW WenKai Lite)')
+    p.add_argument('--log', default='', help='Write complete stdout/stderr to a UTF-8 log file')
     p.add_argument('--step', default='all', choices=['all', 'cover', 'html', 'pdf'],
                    help='Execution step: cover (only update cover), html (generate index_read.html), pdf (generate PDF), or all (default)')
     args = p.parse_args()
-    asyncio.run(main_async(args))
+    if args.log:
+        log_path = Path(args.log)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open('w', encoding='utf-8') as log_file:
+            with contextlib.redirect_stdout(log_file), contextlib.redirect_stderr(log_file):
+                asyncio.run(main_async(args))
+    else:
+        asyncio.run(main_async(args))
 
 
 if __name__ == '__main__':
