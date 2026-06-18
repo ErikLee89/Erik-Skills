@@ -27,9 +27,12 @@ python convert.py --input "book_folder/index.html" --output "custom/output.pdf"
 python convert.py --zip "book.zip" --format Letter
 
 # Modular execution (skip stages to save time)
-python convert.py --input "book.html" --step cover  # Only download and update cover
-python convert.py --input "book.html" --step html   # Only generate web reader, skip PDF
-python convert.py --input "book.html" --step pdf    # Only generate PDF, skip web reader
+# Note: Cover validation/download is foundational and ALWAYS runs in every step.
+# The --step flag is single-choice and determines where the pipeline stops or branches.
+python convert.py --input "book.html" --step cover  # Only update cover, then exit
+python convert.py --input "book.html" --step html   # Update cover + generate web reader, skip PDF
+python convert.py --input "book.html" --step pdf    # Update cover + generate PDF, skip web reader
+python convert.py --input "book.html" --step all    # Default: Do everything (cover + html + pdf)
 ```
 
 ## PDF Output Location
