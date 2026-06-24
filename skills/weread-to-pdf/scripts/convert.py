@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 html-to-pdf skill -- convert.py  v3.5
 
@@ -411,10 +411,10 @@ def build_sidebar(chapters: list, book_title: str) -> str:
         title, cid, h2s = ch['title'], ch['id'], ch.get('h2s', [])
         level = max(1, min(3, ch.get('level', 1)))
         node = {'id': cid, 'title': title, 'children': [], 'h2s': []}
-        for h2 in h2s:
-            h2n = {'title': h2['title'], 'id': h2.get('id') or '', 'children': []}
-            for h3 in h2.get('h3s', []):
-                h2n['children'].append({'title': h3['title'], 'id': h3.get('id') or ''})
+        for i, h2 in enumerate(h2s):
+            h2n = {'title': h2['title'], 'id': h2.get('id') or h2_mk(cid, i), 'children': []}
+            for j, h3 in enumerate(h2.get('h3s', [])):
+                h2n['children'].append({'title': h3['title'], 'id': h3.get('id') or h3_mk(cid, i, j)})
             node['h2s'].append(h2n)
         parent = next(
             (section_stack[candidate]
@@ -476,6 +476,9 @@ def build_sidebar(chapters: list, book_title: str) -> str:
         '#wb-handle{width:5px;background:transparent;cursor:col-resize;'
         'flex-shrink:0;transition:background .2s;z-index:101}\n'
         '#wb-handle:hover,#wb-handle.drag{background:#8b572a33}\n'
+        '#wb-resize-guide{position:fixed;top:0;bottom:0;width:2px;background:#8b572a;z-index:300;display:none;pointer-events:none}\n'
+        'body.wb-resizing{cursor:col-resize!important;user-select:none!important}\n'
+        'body.wb-resizing #wb-content{pointer-events:none}\n'
         '#wb-content{flex:1;min-width:0;height:100%;overflow-y:auto;background:#faf8f5;-webkit-overflow-scrolling:touch}\n'
         '#wb-content>section,.readerChapterContent{max-width:780px;margin:0 auto;padding:32px 48px}\n'
         '.bodyPic,.qrbodyPic{text-align:center!important}\n'
@@ -514,6 +517,7 @@ def build_sidebar(chapters: list, book_title: str) -> str:
         '  body.appendChild(layout);\n'
         '  var toc=document.getElementById("wb-toc");\n'
         '  var all=[];\n'
+        '  var manualActiveUntil=0;\n'
         '  function mk(node,lv){\n'
         '    var kids=(node.h2s||[]).concat(node.children||[]);\n'
         '    var hc=kids.length>0;\n'
@@ -534,6 +538,7 @@ def build_sidebar(chapters: list, book_title: str) -> str:
         '      });\n'
         '    }\n'
         '    row.addEventListener("click",function(){\n'
+        '      manualActiveUntil=Date.now()+900;\n'
         '      nav(node);\n'
         '      setA(item);\n'
         '    });\n'
@@ -565,14 +570,23 @@ def build_sidebar(chapters: list, book_title: str) -> str:
         '    handle.style.display=vis?"":"none";\n'
         '    tog.innerHTML=vis?SVG_MENU:SVG_CHEVRON;\n'
         '  });\n'
-        '  var sx,sw;\n'
+        '  var sx,sw,pendingW=null,guide=null;\n'
         '  handle.addEventListener("mousedown",function(e){\n'
-        '    sx=e.clientX;sw=sidebar.offsetWidth;handle.classList.add("drag");\n'
+        '    sx=e.clientX;sw=sidebar.offsetWidth;pendingW=sw;handle.classList.add("drag");\n'
+        '    document.body.classList.add("wb-resizing");\n'
+        '    guide=document.getElementById("wb-resize-guide");\n'
+        '    if(!guide){guide=document.createElement("div");guide.id="wb-resize-guide";document.body.appendChild(guide);}\n'
+        '    guide.style.left=(sidebar.getBoundingClientRect().left+sw)+"px";\n'
+        '    guide.style.display="block";\n'
         '    e.preventDefault();\n'
-        '    document.addEventListener("mousemove",drag);\n'
+        '    document.addEventListener("mousemove",drag,{passive:true});\n'
         '    document.addEventListener("mouseup",dragEnd);});\n'
-        '  function drag(e){sidebar.style.width=Math.max(160,Math.min(500,sw+e.clientX-sx))+"px";}\n'
+        '  function drag(e){pendingW=Math.max(160,Math.min(500,sw+e.clientX-sx));\n'
+        '    if(guide)guide.style.left=(sidebar.getBoundingClientRect().left+pendingW)+"px";}\n'
         '  function dragEnd(){handle.classList.remove("drag");\n'
+        '    document.body.classList.remove("wb-resizing");\n'
+        '    if(guide)guide.style.display="none";\n'
+        '    if(pendingW!==null){sidebar.style.width=pendingW+"px";pendingW=null;}\n'
         '    document.removeEventListener("mousemove",drag);\n'
         '    document.removeEventListener("mouseup",dragEnd);}\n'
         '  var anchors=[];\n'
@@ -581,8 +595,9 @@ def build_sidebar(chapters: list, book_title: str) -> str:
         '    if(el)anchors.push({el:el,item:x.item});});\n'
         '  var syncPending=false;\n'
         '  function syncActive(){syncPending=false;if(!anchors.length)return;\n'
+        '    if(Date.now()<manualActiveUntil)return;\n'
         '    var box=content.getBoundingClientRect();\n'
-        '    var line=box.top+Math.min(120,box.height*.15);\n'
+        '    var line=box.top+24;\n'
         '    var best=null,bestTop=-Infinity,next=null,nextTop=Infinity;\n'
         '    anchors.forEach(function(a){var top=a.el.getBoundingClientRect().top;\n'
         '      if(top<=line&&top>bestTop){best=a;bestTop=top;}\n'
@@ -983,8 +998,11 @@ def preprocess_html(src: Path, dst: Path, chapters: list,
             
             if h2_el:
                 marked_elements.add(h2_el)
+                h2_marker_id = h2_mk(cid, i)
+                if not h2_el.get('id'):
+                    h2_el['id'] = h2_marker_id
                 h2_marker = soup.new_tag('span', attrs={'class': 'bkmark'})
-                h2_marker.string = h2_mk(cid, i)
+                h2_marker.string = h2_marker_id
                 h2_el.insert_before(h2_marker)
 
                 # Now do the same for h3s under this h2
@@ -1001,8 +1019,11 @@ def preprocess_html(src: Path, dst: Path, chapters: list,
                                 break
                     if h3_el:
                         marked_elements.add(h3_el)
+                        h3_marker_id = h3_mk(cid, i, j)
+                        if not h3_el.get('id'):
+                            h3_el['id'] = h3_marker_id
                         h3_marker = soup.new_tag('span', attrs={'class': 'bkmark'})
-                        h3_marker.string = h3_mk(cid, i, j)
+                        h3_marker.string = h3_marker_id
                         h3_el.insert_before(h3_marker)
 
     # Process footnotes (convert data-wr-footernote to visible footnote block quotes)
@@ -1513,3 +1534,8 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+
+
+

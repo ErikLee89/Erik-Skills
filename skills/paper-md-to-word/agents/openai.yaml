@@ -1,0 +1,4 @@
+interface:
+  display_name: "Paper MD to Word"
+  short_description: "Convert manuscript Markdown to DOCX with editable Word equations"
+  default_prompt: "Use paper-md-to-word to convert a manuscript Markdown file into a Word document with editable equations."
