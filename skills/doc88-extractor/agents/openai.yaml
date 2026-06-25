@@ -1,0 +1,3 @@
+display_name: Doc88 Extractor
+short_description: Convert authorized Doc88 URLs to selectable PDFs.
+default_prompt: "Convert this authorized Doc88 document URL into a text-selectable PDF:"
