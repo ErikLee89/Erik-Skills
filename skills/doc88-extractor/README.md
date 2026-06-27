@@ -122,7 +122,7 @@ Most documents do not need swf2xml. It is disabled by default because ffdec is u
 
 当某些页出现多余 `]`、横版文字错乱、公式或括号错误时，可以启用 swf2xml。它会从 SWF 的字形轮廓重新绘制页面，常常能修复 ffdec 的字体映射问题。
 
-Use swf2xml when some pages show extra `]`, broken landscape text, or wrong formula/bracket glyphs. It redraws pages from SWF glyph outlines and often fixes ffdec font-mapping issues.
+Use swf2xml when some pages show extra `]`, broken landscape text, or wrong formula/bracket glyphs. It redraws text from SWF glyph outlines while preserving images, line art, and other background objects from the original ffdec page. This often fixes ffdec font-mapping issues.
 
 ### 自动修复候选页 / Automatically Repair Candidate Pages
 

@@ -669,7 +669,86 @@ def subset_fonts_in_place(pdf_path: Path) -> dict[str, Any]:
         return {"status": "skipped", "reason": f"{type(exc).__name__}: {exc}", "before_bytes": before}
 
 
-def apply_swf2xml_fallback_pages(out_dir: Path, java: Path, ffdec: Path, analysis: list[dict[str, Any]]) -> set[int]:
+def strip_pdf_text_operators(source_pdf: Path, dest_pdf: Path) -> dict[str, Any]:
+    """Keep images/vector drawing from a PDF page while removing visible text objects."""
+    try:
+        import fitz
+    except Exception as exc:
+        return {"status": "skipped", "reason": f"pymupdf_unavailable:{type(exc).__name__}"}
+
+    removed = 0
+    changed_streams = 0
+    tmp = dest_pdf.with_suffix(dest_pdf.suffix + ".tmp")
+    try:
+        doc = fitz.open(source_pdf)
+        for page in doc:
+            for xref in page.get_contents() or []:
+                raw = doc.xref_stream(xref)
+                if not raw:
+                    continue
+                stream = raw.decode("latin-1")
+                stream, count = re.subn(r"BT\b.*?\bET", "", stream, flags=re.DOTALL)
+                if count:
+                    doc.update_stream(xref, stream.encode("latin-1"))
+                    removed += count
+                    changed_streams += 1
+        doc.save(tmp, garbage=4, clean=True, deflate=True)
+        doc.close()
+        tmp.replace(dest_pdf)
+        return {"status": "ok", "removed_text_objects": removed, "changed_streams": changed_streams}
+    except Exception as exc:
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except Exception:
+            pass
+        return {"status": "skipped", "reason": f"{type(exc).__name__}: {exc}"}
+
+
+def overlay_swf2xml_on_ffdec_background(
+    original_pdf: Path,
+    vector_pdf: Path,
+    dest_pdf: Path,
+    page_w: float,
+    page_h: float,
+    zoom: float,
+) -> dict[str, Any]:
+    background_pdf = dest_pdf.with_suffix(".ffdec_background.pdf")
+    strip_info = strip_pdf_text_operators(original_pdf, background_pdf)
+    if strip_info.get("status") != "ok":
+        return {"status": "skipped", "text_strip": strip_info}
+
+    try:
+        bg_reader = PdfReader(str(background_pdf))
+        vector_reader = PdfReader(str(vector_pdf))
+        if not bg_reader.pages or not vector_reader.pages:
+            return {"status": "skipped", "reason": "empty_pdf", "text_strip": strip_info}
+        bg_page = bg_reader.pages[0]
+        vector_page = vector_reader.pages[0]
+        if zoom and abs(zoom - 1.0) > 0.001:
+            bg_page.scale_by(1.0 / zoom)
+        bg_page.mediabox = RectangleObject([0, 0, page_w, page_h])
+        bg_page.cropbox = RectangleObject([0, 0, page_w, page_h])
+        vector_page.mediabox = RectangleObject([0, 0, page_w, page_h])
+        vector_page.cropbox = RectangleObject([0, 0, page_w, page_h])
+        bg_page.merge_page(vector_page)
+        writer = PdfWriter()
+        writer.add_page(bg_page)
+        with dest_pdf.open("wb") as f:
+            writer.write(f)
+        return {
+            "status": "ok",
+            "text_strip": strip_info,
+            "background_pdf": str(background_pdf),
+            "page_width": page_w,
+            "page_height": page_h,
+            "zoom": zoom,
+        }
+    except Exception as exc:
+        return {"status": "skipped", "reason": f"{type(exc).__name__}: {exc}", "text_strip": strip_info}
+
+
+def apply_swf2xml_fallback_pages(out_dir: Path, java: Path, ffdec: Path, analysis: list[dict[str, Any]], zoom: float) -> set[int]:
     pages = [int(item["page"]) for item in analysis if item.get("needs_swf2xml")]
     if not pages:
         return set()
@@ -694,8 +773,26 @@ def apply_swf2xml_fallback_pages(out_dir: Path, java: Path, ffdec: Path, analysi
             page_w = (frame[1] - frame[0]) / 20.0
             page_h = (frame[3] - frame[2]) / 20.0
             info = rebuild_pdf_page_from_swf_xml(xml, replacement_pdf, page_w, page_h)
-            quality = next((item.get("pdf_text_quality", {}) for item in analysis if int(item.get("page", -1)) == page), {})
-            info["hidden_text_layer"] = add_hidden_text_layer_from_pdf(replacement_pdf, original_pdf, quality) if original_pdf.exists() else {"status": "skipped", "reason": "missing_original_pdf"}
+            analysis_item = next((item for item in analysis if int(item.get("page", -1)) == page), {})
+            quality = analysis_item.get("pdf_text_quality", {})
+            vector_only_pdf = xml_dir / f"{page}_swf2xml_vector_only.pdf"
+            shutil.copy2(replacement_pdf, vector_only_pdf)
+            info["vector_only_pdf"] = str(vector_only_pdf)
+            if original_pdf.exists():
+                info["hybrid_background"] = overlay_swf2xml_on_ffdec_background(
+                    original_pdf=original_pdf,
+                    vector_pdf=vector_only_pdf,
+                    dest_pdf=replacement_pdf,
+                    page_w=page_w,
+                    page_h=page_h,
+                    zoom=zoom,
+                )
+            else:
+                info["hybrid_background"] = {"status": "skipped", "reason": "missing_original_pdf"}
+            if "manual_force_swf2xml" in analysis_item.get("reasons", []):
+                info["hidden_text_layer"] = {"status": "skipped", "reason": "manual_force_swf2xml"}
+            else:
+                info["hidden_text_layer"] = add_hidden_text_layer_from_pdf(replacement_pdf, original_pdf, quality) if original_pdf.exists() else {"status": "skipped", "reason": "missing_original_pdf"}
             info["page_optimization"] = subset_fonts_in_place(replacement_pdf)
             info["page"] = page
             replacements.append(info)
@@ -1249,7 +1346,7 @@ def main() -> int:
     (out_dir / "page_analysis.json").write_text(json.dumps(page_analysis, ensure_ascii=False, indent=2), encoding="utf-8")
     swf2xml_replaced_pages: set[int] = set()
     if args.swf2xml_fallback or force_swf2xml_pages:
-        swf2xml_replaced_pages = apply_swf2xml_fallback_pages(out_dir, java, ffdec, page_analysis)
+        swf2xml_replaced_pages = apply_swf2xml_fallback_pages(out_dir, java, ffdec, page_analysis, zoom=args.zoom)
     page_sizes = page_sizes_from_config(cfg)
     output_title = cfg.get("p_name") or f"doc88_{p_code}"
     if selected_pages:
