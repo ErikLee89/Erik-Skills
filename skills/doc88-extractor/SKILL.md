@@ -26,7 +26,10 @@ Useful options:
 
 - The default conversion path is ffdec only, followed by non-rasterized optimization. This is fastest and usually gives the smallest text-selectable PDF.
 - Optimization is enabled by default. It uses skill-local Ghostscript first for strong text-selectable PDF compression on ffdec-only PDFs, auto-downloading it when missing, then falls back to PyMuPDF if Ghostscript is unavailable.
+- The merge step uses Doc88 `pageInfo` page sizes so mixed portrait/landscape documents keep correct page boxes instead of square ffdec canvases.
+- Literal `doc88vounge` / `doc88vuonge` text watermarks are removed by default. The rule is marker-based and must not delete content only because it is rotated, transparent, or large.
 - `--no-optimize`: skip the default non-rasterized optimization step.
+- `--no-remove-watermark`: keep literal Doc88 marker watermarks in the delivered PDF.
 - `--gs-pdfsettings`: choose Ghostscript compression settings, default `/default`; useful alternatives are `/prepress` and `/ebook`.
 - `--output-root`: override where the final PDF is written. Default: the current user's system Downloads folder.
 - `--tools-dir`: override the portable Java/ffdec directory. Default: the skill-local `.tools` directory; the script auto-downloads portable Java/ffdec there if missing.

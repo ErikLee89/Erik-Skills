@@ -26,6 +26,7 @@ from typing import Any
 
 import requests
 from pypdf import PdfReader, PdfWriter
+from pypdf.generic import RectangleObject
 
 from swf_xml_vector import rebuild_pdf_page_from_swf_xml
 
@@ -683,16 +684,55 @@ def apply_swf2xml_fallback_pages(out_dir: Path, java: Path, ffdec: Path, analysi
     return {int(item["page"]) for item in replacements}
 
 
-def merge_pages(out_dir: Path, title: str, page_count: int, zoom: float, unscaled_pages: set[int] | None = None) -> Path:
+def page_sizes_from_config(cfg: dict[str, Any]) -> dict[int, tuple[float, float]]:
+    sizes: dict[int, tuple[float, float]] = {}
+    try:
+        page_ids = decode_doc88(cfg["pageInfo"], KEY_MAIN).split(",")
+    except Exception:
+        return sizes
+    for page_no, page_id in enumerate(page_ids, 1):
+        parts = page_id.split("-")
+        if len(parts) < 3:
+            continue
+        try:
+            width = float(parts[1])
+            height = float(parts[2])
+        except ValueError:
+            continue
+        if width > 0 and height > 0:
+            sizes[page_no] = (width, height)
+    return sizes
+
+
+def set_page_box(page: Any, width: float, height: float) -> None:
+    box = RectangleObject([0, 0, width, height])
+    page.mediabox = box
+    page.cropbox = RectangleObject(box)
+    page.trimbox = RectangleObject(box)
+    page.bleedbox = RectangleObject(box)
+    page.artbox = RectangleObject(box)
+
+
+def merge_pages(
+    out_dir: Path,
+    title: str,
+    page_count: int,
+    zoom: float,
+    unscaled_pages: set[int] | None = None,
+    page_sizes: dict[int, tuple[float, float]] | None = None,
+) -> Path:
     pdf_pages = out_dir / "pdf_pages"
     final_pdf = unique_dest(out_dir / f"{safe_name(title)}_doc88_preview.pdf")
     writer = PdfWriter()
     unscaled_pages = unscaled_pages or set()
+    page_sizes = page_sizes or {}
     for i in range(1, page_count + 1):
         reader = PdfReader(str(pdf_pages / f"{i}.pdf"))
         page = reader.pages[0]
         if zoom != 1 and i not in unscaled_pages:
             page.scale_by(1 / zoom)
+        if i in page_sizes:
+            set_page_box(page, *page_sizes[i])
         writer.add_page(page)
     with final_pdf.open("wb") as f:
         writer.write(f)
@@ -1026,6 +1066,79 @@ def unique_dest(path: Path) -> Path:
     raise RuntimeError(f"Could not find an unused output filename for {path}")
 
 
+DOC88_WATERMARK_MARKERS = ("doc88vounge", "doc88vuonge")
+
+
+def _is_doc88_watermark_text_block(block: str) -> bool:
+    if "doc88hidden" in block:
+        return False
+    normalized = re.sub(r"[^a-z0-9]+", "", block.lower())
+    return any(marker in normalized for marker in DOC88_WATERMARK_MARKERS)
+
+
+def _remove_watermark(pdf_path: Path) -> dict[str, Any]:
+    """Remove only literal Doc88 vounge/vuonge watermark text blocks."""
+    result: dict[str, Any] = {
+        "enabled": True,
+        "status": "unchanged",
+        "matched_blocks": 0,
+        "modified_pages": [],
+        "markers": list(DOC88_WATERMARK_MARKERS),
+    }
+    try:
+        import fitz  # PyMuPDF
+    except ImportError as exc:
+        result.update({"status": "skipped", "reason": f"pymupdf_unavailable:{type(exc).__name__}"})
+        return result
+
+    doc = fitz.open(pdf_path)
+    modified_pages: set[int] = set()
+    matched_blocks = 0
+    try:
+        for i in range(len(doc)):
+            page = doc[i]
+            page_modified = False
+            contents = page.get_contents() or []
+            for xref in contents:
+                try:
+                    stream = doc.xref_stream(xref).decode("latin-1")
+                except Exception:
+                    continue
+                new_stream = stream
+                changed = False
+                for block in re.findall(r"BT.*?ET", stream, re.DOTALL):
+                    if "doc88hidden" in block:
+                        continue
+                    if not _is_doc88_watermark_text_block(block):
+                        continue
+                    new_stream = new_stream.replace(block, "")
+                    changed = True
+                    matched_blocks += 1
+                if changed:
+                    doc.update_stream(xref, new_stream.encode("latin-1"))
+                    page_modified = True
+
+            if page_modified:
+                modified_pages.add(i + 1)
+        if modified_pages:
+            tmp = pdf_path.with_suffix(pdf_path.suffix + ".watermark.tmp")
+            doc.save(tmp, garbage=4, deflate=True)
+            doc.close()
+            tmp.replace(pdf_path)
+            result.update({
+                "status": "removed",
+                "matched_blocks": matched_blocks,
+                "modified_pages": sorted(modified_pages),
+            })
+            print(f"Doc88 watermark removed from {len(modified_pages)} page(s).", flush=True)
+        else:
+            doc.close()
+    except Exception:
+        doc.close()
+        raise
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Convert an authorized Doc88 URL to a text-selectable PDF.")
     parser.add_argument("url_or_id", help="Doc88 p-*.html URL or numeric document ID.")
@@ -1035,6 +1148,7 @@ def main() -> int:
     parser.add_argument("--convert-workers", type=int, default=5, help="ffdec conversion workers.")
     parser.add_argument("--zoom", type=float, default=2.0, help="ffdec PDF export zoom; pages are scaled back on merge.")
     parser.add_argument("--no-optimize", action="store_true", help="Skip the default non-rasterized PDF optimization step.")
+    parser.add_argument("--no-remove-watermark", action="store_true", help="Keep literal Doc88 vounge/vuonge watermark text blocks in the delivered PDF.")
     parser.add_argument("--gs-pdfsettings", default="/default", help="Ghostscript PDFSETTINGS value, for example /default, /prepress, or /ebook.")
     parser.add_argument("--no-download-tools", action="store_true", help="Do not download portable Java/ffdec if missing.")
     parser.add_argument("--keep-intermediates", action="store_true", help="Keep EBT, SWF, page PDFs, and run_summary.json.")
@@ -1099,7 +1213,15 @@ def main() -> int:
     swf2xml_replaced_pages: set[int] = set()
     if args.swf2xml_fallback or force_swf2xml_pages:
         swf2xml_replaced_pages = apply_swf2xml_fallback_pages(out_dir, java, ffdec, page_analysis)
-    final_pdf = merge_pages(out_dir, cfg.get("p_name") or f"doc88_{p_code}", pdf_page_count, zoom=args.zoom, unscaled_pages=swf2xml_replaced_pages)
+    page_sizes = page_sizes_from_config(cfg)
+    final_pdf = merge_pages(
+        out_dir,
+        cfg.get("p_name") or f"doc88_{p_code}",
+        pdf_page_count,
+        zoom=args.zoom,
+        unscaled_pages=swf2xml_replaced_pages,
+        page_sizes=page_sizes,
+    )
     final_info = verify_pdf(final_pdf)
     optimized_info = None
     if not args.no_optimize:
@@ -1109,6 +1231,9 @@ def main() -> int:
     final_dest = unique_dest(output_root / chosen_pdf.name)
     if chosen_pdf.resolve() != final_dest.resolve():
         shutil.copy2(chosen_pdf, final_dest)
+    watermark_info = {"enabled": False, "status": "disabled"}
+    if not args.no_remove_watermark:
+        watermark_info = _remove_watermark(final_dest)
     delivered_info = verify_pdf(final_dest)
 
     summary = {
@@ -1125,8 +1250,10 @@ def main() -> int:
         "swf2xml_mode": args.swf2xml_mode,
         "skip_swf2xml_pages": sorted(skip_swf2xml_pages),
         "pdf_page_count": pdf_page_count,
+        "page_size_source": "pageInfo",
         "final_pdf": final_info,
         "optimized_pdf": optimized_info,
+        "watermark_removal": watermark_info,
         "delivered_pdf": delivered_info,
         "seconds": round(time.time() - start, 1),
     }

@@ -92,6 +92,16 @@ Keep EBT files, SWFs, page PDFs, diagnostic JSON files, and the run summary for 
 
 Skip final PDF optimization. This is mainly useful when comparing raw conversion output.
 
+### ?? Doc88 marker ?? / Keep Doc88 Marker Watermarks
+
+```bash
+--no-remove-watermark
+```
+
+????? PDF ??????????? `doc88vounge` ? `doc88vuonge` ???????????????????????????????
+
+By default, the script removes text blocks that normalize to `doc88vounge` or `doc88vuonge`. It no longer removes content merely because it is rotated, transparent, or large.
+
 ### Ghostscript 压缩设置 / Ghostscript Compression Setting
 
 ```bash
