@@ -1039,9 +1039,11 @@ def main() -> int:
     parser.add_argument("--no-download-tools", action="store_true", help="Do not download portable Java/ffdec if missing.")
     parser.add_argument("--keep-intermediates", action="store_true", help="Keep EBT, SWF, page PDFs, and run_summary.json.")
     parser.add_argument("--keep-groups", action="store_true", help="Keep temporary grouped conversion folders.")
-    parser.add_argument("--no-swf2xml-fallback", action="store_true", help="Do not replace detected problematic pages with swf2xml vector reconstruction.")
-    parser.add_argument("--swf2xml-mode", choices=["conservative", "auto", "aggressive", "all"], default="auto", help="Fallback detection mode. auto adds high-confidence visual glyph risk checks; conservative uses only broken text layers.")
-    parser.add_argument("--force-swf2xml-pages", default="", help="Comma/range list of pages to force through swf2xml fallback, for example 1,48-50.")
+    parser.add_argument("--swf2xml-fallback", dest="swf2xml_fallback", action="store_true", help="Replace detected problematic pages with swf2xml vector reconstruction. Disabled by default; ffdec is the default path.")
+    parser.add_argument("--no-swf2xml-fallback", dest="swf2xml_fallback", action="store_false", help="Keep all auto-detected pages on the ffdec path. This is the default.")
+    parser.set_defaults(swf2xml_fallback=False)
+    parser.add_argument("--swf2xml-mode", choices=["conservative", "auto", "aggressive", "all"], default="auto", help="Fallback detection mode used when --swf2xml-fallback is enabled. auto adds high-confidence visual glyph risk checks; conservative uses only broken text layers.")
+    parser.add_argument("--force-swf2xml-pages", default="", help="Comma/range list of pages to force through swf2xml fallback, for example 1,48-50. This works even when --swf2xml-fallback is not set.")
     parser.add_argument("--skip-swf2xml-pages", default="", help="Comma/range list of pages to keep as original ffdec PDFs even if detected.")
     args = parser.parse_args()
 
@@ -1095,7 +1097,7 @@ def main() -> int:
             item.setdefault("reasons", []).append("manual_skip_swf2xml")
     (out_dir / "page_analysis.json").write_text(json.dumps(page_analysis, ensure_ascii=False, indent=2), encoding="utf-8")
     swf2xml_replaced_pages: set[int] = set()
-    if not args.no_swf2xml_fallback:
+    if args.swf2xml_fallback or force_swf2xml_pages:
         swf2xml_replaced_pages = apply_swf2xml_fallback_pages(out_dir, java, ffdec, page_analysis)
     final_pdf = merge_pages(out_dir, cfg.get("p_name") or f"doc88_{p_code}", pdf_page_count, zoom=args.zoom, unscaled_pages=swf2xml_replaced_pages)
     final_info = verify_pdf(final_pdf)
@@ -1119,6 +1121,7 @@ def main() -> int:
         "swf2xml_candidate_pages": [item["page"] for item in page_analysis if item["needs_swf2xml"]],
         "swf2xml_replaced_pages": sorted(swf2xml_replaced_pages),
         "force_swf2xml_pages": sorted(force_swf2xml_pages),
+        "swf2xml_fallback_enabled": bool(args.swf2xml_fallback or force_swf2xml_pages),
         "swf2xml_mode": args.swf2xml_mode,
         "skip_swf2xml_pages": sorted(skip_swf2xml_pages),
         "pdf_page_count": pdf_page_count,
@@ -1127,10 +1130,13 @@ def main() -> int:
         "delivered_pdf": delivered_info,
         "seconds": round(time.time() - start, 1),
     }
+    review_note = "Please review the delivered PDF for page accuracy, especially landscape pages, formulas, tables, brackets, and pages listed in swf2xml_candidate_pages."
+    summary["review_note"] = review_note
     (out_dir / "run_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     if not args.keep_intermediates:
         shutil.rmtree(out_dir, ignore_errors=True)
     print(json.dumps(summary, ensure_ascii=False, indent=2), flush=True)
+    print(f"Review reminder: {review_note}", flush=True)
     return 0
 
 

@@ -24,7 +24,8 @@ python -X utf8 scripts/doc88_to_pdf.py "https://www.doc88.com/p-123456.html"
 
 Useful options:
 
-- Optimization is enabled by default. It uses skill-local Ghostscript first for strong text-selectable PDF compression, auto-downloading it when missing, then falls back to PyMuPDF if Ghostscript is unavailable.
+- The default conversion path is ffdec only, followed by non-rasterized optimization. This is fastest and usually gives the smallest text-selectable PDF.
+- Optimization is enabled by default. It uses skill-local Ghostscript first for strong text-selectable PDF compression on ffdec-only PDFs, auto-downloading it when missing, then falls back to PyMuPDF if Ghostscript is unavailable.
 - `--no-optimize`: skip the default non-rasterized optimization step.
 - `--gs-pdfsettings`: choose Ghostscript compression settings, default `/default`; useful alternatives are `/prepress` and `/ebook`.
 - `--output-root`: override where the final PDF is written. Default: the current user's system Downloads folder.
@@ -34,10 +35,11 @@ Useful options:
 - `--keep-groups`: also keep temporary grouped SWF/PDF conversion folders.
 - `--force-swf2xml-pages`: force selected pages through the Doc88 XML vector renderer, e.g. `1,48-50`.
 - `--skip-swf2xml-pages`: keep selected pages on the normal ffdec PDF path even if diagnostics mark them as fallback candidates.
-- `--no-swf2xml-fallback`: disable automatic XML vector reconstruction for pages with bad ffdec text/layout diagnostics.
-- `--swf2xml-mode`: choose fallback detection strictness. Default `auto` handles broken text layers plus high-confidence visual glyph risks such as symbol fonts that render brackets/formula glyphs incorrectly. `conservative` uses only broken text layers, `aggressive` also replaces pages with risky special fonts, and `all` replaces every static fallback candidate.
+- `--swf2xml-fallback`: enable automatic XML vector reconstruction for detected problematic pages. Disabled by default because most documents work best with ffdec.
+- `--no-swf2xml-fallback`: explicitly keep auto-detected pages on the ffdec path; this is the default.
+- `--swf2xml-mode`: choose fallback detection strictness when `--swf2xml-fallback` is enabled. Default `auto` handles broken text layers plus high-confidence visual glyph risks such as symbol fonts that render brackets/formula glyphs incorrectly. `conservative` uses only broken text layers, `aggressive` also replaces pages with risky special fonts, and `all` replaces every static fallback candidate.
 
-The script prints a JSON summary containing `final_pdf`, optional `optimized_pdf`, page count, size, and output directory.
+The script prints a JSON summary containing `final_pdf`, optional `optimized_pdf`, page count, size, output directory, detected swf2xml candidate pages, and a review reminder.
 
 ## Output
 
@@ -46,7 +48,7 @@ By default, the script leaves only the final PDF in the output root and deletes 
 With `--keep-intermediates`, the script keeps `doc88_<p_code>_ebt` under the output root with:
 
 - `index.json`: decoded page configuration.
-- `page_analysis.json`: deterministic per-page SWF/PDF diagnostics. Pages with garbled ffdec text layers are automatically replaced through `swf2xml` vector reconstruction unless `--no-swf2xml-fallback` is used.
+- `page_analysis.json`: deterministic per-page SWF/PDF diagnostics. Candidate pages are reported in the summary; they are replaced only when `--swf2xml-fallback` or `--force-swf2xml-pages` is used.
 - `*.ebt`: downloaded PH/PK files from the listed preview configuration.
 - `swf/`: rebuilt SWF pages.
 - `pdf_pages/`: one PDF per page; detected fallback pages are replaced by vector PDFs rebuilt from `swf2xml`.
@@ -58,7 +60,8 @@ With `--keep-intermediates`, the script keeps `doc88_<p_code>_ebt` under the out
 
 ## Notes
 
-- The normal ffdec path is text-selectable when the source SWF contains text objects or text layers.
+- The normal ffdec path is the default and is text-selectable when the source SWF contains text objects or text layers.
+- After every run, review the delivered PDF for page accuracy, especially landscape pages, formulas, tables, brackets, and pages listed in `swf2xml_candidate_pages`.
 - The `swf2xml` fallback keeps vector outlines and can add an invisible text layer only when the original ffdec page has a usable text layer. If diagnostics mark that original text as garbled, the fallback deliberately skips the text layer rather than embedding wrong searchable text.
 - Fallback pages are optimized with PyMuPDF font subsetting after the hidden text layer is added. If any fallback pages are used, final optimization also prefers PyMuPDF instead of Ghostscript so hidden-text ToUnicode mappings are not rewritten incorrectly.
 - The fallback renderer is Doc88-document-page-specific. It handles the common Doc88 glyph-outline and line-shape patterns, but it is not a complete Flash/SWF renderer.
