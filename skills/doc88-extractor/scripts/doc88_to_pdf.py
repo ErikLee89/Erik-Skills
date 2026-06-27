@@ -614,6 +614,38 @@ def swf2xml_page(java: Path, ffdec: Path, swf: Path, xml: Path) -> tuple[int, st
     return result.returncode, (result.stderr or result.stdout)[-2000:]
 
 
+def subset_fonts_in_place(pdf_path: Path) -> dict[str, Any]:
+    try:
+        import fitz
+    except Exception as exc:
+        return {"status": "skipped", "reason": f"pymupdf_unavailable:{type(exc).__name__}"}
+    before = pdf_path.stat().st_size if pdf_path.exists() else 0
+    tmp = pdf_path.with_suffix(pdf_path.suffix + ".subset.tmp")
+    try:
+        doc = fitz.open(pdf_path)
+        try:
+            doc.subset_fonts()
+        except Exception as exc:
+            subset_warning = f"subset_fonts_failed:{type(exc).__name__}"
+        else:
+            subset_warning = None
+        doc.save(tmp, garbage=4, clean=True, deflate=True)
+        doc.close()
+        tmp.replace(pdf_path)
+        after = pdf_path.stat().st_size
+        result = {"status": "optimized", "before_bytes": before, "after_bytes": after}
+        if subset_warning:
+            result["warning"] = subset_warning
+        return result
+    except Exception as exc:
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except Exception:
+            pass
+        return {"status": "skipped", "reason": f"{type(exc).__name__}: {exc}", "before_bytes": before}
+
+
 def apply_swf2xml_fallback_pages(out_dir: Path, java: Path, ffdec: Path, analysis: list[dict[str, Any]]) -> set[int]:
     pages = [int(item["page"]) for item in analysis if item.get("needs_swf2xml")]
     if not pages:
@@ -641,6 +673,7 @@ def apply_swf2xml_fallback_pages(out_dir: Path, java: Path, ffdec: Path, analysi
             info = rebuild_pdf_page_from_swf_xml(xml, replacement_pdf, page_w, page_h)
             quality = next((item.get("pdf_text_quality", {}) for item in analysis if int(item.get("page", -1)) == page), {})
             info["hidden_text_layer"] = add_hidden_text_layer_from_pdf(replacement_pdf, original_pdf, quality) if original_pdf.exists() else {"status": "skipped", "reason": "missing_original_pdf"}
+            info["page_optimization"] = subset_fonts_in_place(replacement_pdf)
             info["page"] = page
             replacements.append(info)
             print(f"swf2xml fallback replaced page {page}: glyphs={info['drawn_glyphs']} shapes={info['drawn_shapes']}", flush=True)
@@ -652,7 +685,7 @@ def apply_swf2xml_fallback_pages(out_dir: Path, java: Path, ffdec: Path, analysi
 
 def merge_pages(out_dir: Path, title: str, page_count: int, zoom: float, unscaled_pages: set[int] | None = None) -> Path:
     pdf_pages = out_dir / "pdf_pages"
-    final_pdf = out_dir / f"{safe_name(title)}_doc88_preview.pdf"
+    final_pdf = unique_dest(out_dir / f"{safe_name(title)}_doc88_preview.pdf")
     writer = PdfWriter()
     unscaled_pages = unscaled_pages or set()
     for i in range(1, page_count + 1):
@@ -769,21 +802,21 @@ def optimize_with_pymupdf(src: Path) -> Path:
         raise RuntimeError("PyMuPDF is required for fallback optimization.") from exc
     dst = src.with_name(src.stem + "_vector_optimized.pdf")
     doc = fitz.open(src)
-    doc.save(
-        dst,
-        garbage=4,
-        clean=True,
-        deflate=True,
-        deflate_images=True,
-        deflate_fonts=True,
-        use_objstms=1,
-        compression_effort=9,
-    )
+    try:
+        doc.subset_fonts()
+    except Exception as exc:
+        print(f"PyMuPDF font subsetting skipped: {exc}", flush=True)
+    doc.save(dst, garbage=4, clean=True, deflate=True)
     doc.close()
     return dst
 
 
-def optimize_pdf(src: Path, tools_dir: Path, pdfsettings: str = "/default") -> Path:
+def optimize_pdf(src: Path, tools_dir: Path, pdfsettings: str = "/default", prefer_pymupdf: bool = False) -> Path:
+    if prefer_pymupdf:
+        try:
+            return optimize_with_pymupdf(src)
+        except Exception as exc:
+            print(f"PyMuPDF optimization failed; trying Ghostscript: {exc}", flush=True)
     gs_exe = ensure_ghostscript(tools_dir)
     if gs_exe and gs_exe.exists():
         try:
@@ -865,6 +898,7 @@ def add_hidden_text_layer_from_pdf(vector_pdf: Path, source_pdf: Path, quality: 
 
 
 def page_pdf_text_quality(pdf_path: Path) -> dict[str, Any]:
+    font_names: list[str] = []
     try:
         reader = PdfReader(str(pdf_path))
         text = reader.pages[0].extract_text() or "" if reader.pages else ""
@@ -873,54 +907,101 @@ def page_pdf_text_quality(pdf_path: Path) -> dict[str, Any]:
             "pdf": str(pdf_path),
             "extract_error": f"{type(exc).__name__}: {exc}",
             "needs_swf2xml": False,
+            "visual_glyph_risk": False,
             "reasons": ["pdf_text_extract_error"],
+            "visual_reasons": [],
         }
+    try:
+        import fitz
+
+        doc = fitz.open(pdf_path)
+        if doc.page_count:
+            font_names = [str(font[3]) for font in doc[0].get_fonts(full=True)]
+        doc.close()
+    except Exception:
+        font_names = []
+
     nonspace = sum(not ch.isspace() for ch in text)
     cjk = sum("\u4e00" <= ch <= "\u9fff" for ch in text)
     ascii_letters = sum("a" <= ch.lower() <= "z" for ch in text)
+    digits = sum(ch.isdigit() for ch in text)
+    math_symbols = sum(ch in "=+-???*/??<>??" for ch in text)
+    bracket_symbols = sum(ch in "()[]{}" for ch in text)
     question = text.count("?")
     replacement = text.count("\ufffd")
     bad_common = text.count("\u793a") + text.count("\u653e")
+    high_number_fonts = []
+    for name in font_names:
+        match = re.search(r"MYFONT(\d+)", name)
+        if match and int(match.group(1)) >= 1000:
+            high_number_fonts.append(name)
+
     reasons: list[str] = []
+    visual_reasons: list[str] = []
     if nonspace >= 80 and cjk == 0 and (question + replacement) / max(nonspace, 1) >= 0.25:
         reasons.append("question_mark_text_layer")
     if nonspace >= 120 and cjk == 0 and ascii_letters <= 10 and bad_common >= 20:
         reasons.append("garbled_repeated_cjk_markers")
     if nonspace >= 120 and cjk == 0 and ascii_letters <= 10 and (question + replacement + bad_common) >= 30:
         reasons.append("no_cjk_in_large_text_layer")
+    if high_number_fonts and nonspace >= 120 and digits >= 40 and (math_symbols >= 8 or bracket_symbols >= 6):
+        visual_reasons.append("symbol_font_visual_glyph_risk")
+    if high_number_fonts and digits >= 120 and bracket_symbols >= 4:
+        visual_reasons.append("numeric_bracket_symbol_font_risk")
+
     return {
         "pdf": str(pdf_path),
         "chars": len(text),
         "nonspace": nonspace,
         "cjk": cjk,
         "ascii_letters": ascii_letters,
+        "digits": digits,
+        "math_symbols": math_symbols,
+        "bracket_symbols": bracket_symbols,
+        "font_names": font_names,
+        "high_number_fonts": sorted(set(high_number_fonts)),
         "question_marks": question,
         "replacement_chars": replacement,
         "bad_common_markers": bad_common,
         "needs_swf2xml": bool(reasons),
+        "visual_glyph_risk": bool(visual_reasons),
         "reasons": reasons,
+        "visual_reasons": visual_reasons,
         "sample": text.replace("\n", " ")[:160],
     }
 
 
-def add_pdf_quality_to_analysis(out_dir: Path, analysis: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def add_pdf_quality_to_analysis(out_dir: Path, analysis: list[dict[str, Any]], swf2xml_mode: str) -> list[dict[str, Any]]:
     pdf_pages = out_dir / "pdf_pages"
     risky: list[int] = []
     for item in analysis:
         pdf_path = pdf_pages / f"{item['page']}.pdf"
-        quality = page_pdf_text_quality(pdf_path) if pdf_path.exists() else {"needs_swf2xml": False, "reasons": ["missing_page_pdf"]}
+        quality = page_pdf_text_quality(pdf_path) if pdf_path.exists() else {"needs_swf2xml": False, "visual_glyph_risk": False, "reasons": ["missing_page_pdf"], "visual_reasons": []}
         item["pdf_text_quality"] = quality
         item["static_swf2xml_candidate"] = item.pop("needs_swf2xml")
         item["static_reasons"] = item.pop("reasons")
-        item["needs_swf2xml"] = bool(item["static_swf2xml_candidate"] and quality.get("needs_swf2xml"))
-        item["reasons"] = item["static_reasons"] + [f"pdf:{reason}" for reason in quality.get("reasons", [])]
+        text_bad = bool(quality.get("needs_swf2xml"))
+        visual_bad = bool(quality.get("visual_glyph_risk"))
+        if swf2xml_mode == "conservative":
+            item["needs_swf2xml"] = bool(item["static_swf2xml_candidate"] and text_bad)
+        elif swf2xml_mode == "aggressive":
+            item["needs_swf2xml"] = bool(item["static_swf2xml_candidate"] and (text_bad or visual_bad or quality.get("high_number_fonts")))
+        elif swf2xml_mode == "all":
+            item["needs_swf2xml"] = bool(item["static_swf2xml_candidate"])
+        else:
+            item["needs_swf2xml"] = bool(item["static_swf2xml_candidate"] and (text_bad or visual_bad))
+        item["reasons"] = (
+            item["static_reasons"]
+            + [f"pdf:{reason}" for reason in quality.get("reasons", [])]
+            + [f"visual:{reason}" for reason in quality.get("visual_reasons", [])]
+        )
         if item["needs_swf2xml"]:
             risky.append(item["page"])
     (out_dir / "page_analysis.json").write_text(json.dumps(analysis, ensure_ascii=False, indent=2), encoding="utf-8")
     if risky:
-        print(f"PDF text analysis: {len(risky)} page(s) should use swf2xml fallback: {risky[:30]}", flush=True)
+        print(f"PDF/SWF analysis: {len(risky)} page(s) should use swf2xml fallback: {risky[:30]}", flush=True)
     else:
-        print("PDF text analysis: no pages require swf2xml fallback after ffdec text checks.", flush=True)
+        print("PDF/SWF analysis: no pages require swf2xml fallback after ffdec checks.", flush=True)
     return analysis
 
 
@@ -959,6 +1040,7 @@ def main() -> int:
     parser.add_argument("--keep-intermediates", action="store_true", help="Keep EBT, SWF, page PDFs, and run_summary.json.")
     parser.add_argument("--keep-groups", action="store_true", help="Keep temporary grouped conversion folders.")
     parser.add_argument("--no-swf2xml-fallback", action="store_true", help="Do not replace detected problematic pages with swf2xml vector reconstruction.")
+    parser.add_argument("--swf2xml-mode", choices=["conservative", "auto", "aggressive", "all"], default="auto", help="Fallback detection mode. auto adds high-confidence visual glyph risk checks; conservative uses only broken text layers.")
     parser.add_argument("--force-swf2xml-pages", default="", help="Comma/range list of pages to force through swf2xml fallback, for example 1,48-50.")
     parser.add_argument("--skip-swf2xml-pages", default="", help="Comma/range list of pages to keep as original ffdec PDFs even if detected.")
     args = parser.parse_args()
@@ -1000,7 +1082,7 @@ def main() -> int:
         zoom=args.zoom,
         keep_groups=args.keep_groups,
     )
-    page_analysis = add_pdf_quality_to_analysis(out_dir, page_analysis)
+    page_analysis = add_pdf_quality_to_analysis(out_dir, page_analysis, args.swf2xml_mode)
     force_swf2xml_pages = parse_page_set(args.force_swf2xml_pages)
     skip_swf2xml_pages = parse_page_set(args.skip_swf2xml_pages)
     for item in page_analysis:
@@ -1019,7 +1101,7 @@ def main() -> int:
     final_info = verify_pdf(final_pdf)
     optimized_info = None
     if not args.no_optimize:
-        optimized = optimize_pdf(final_pdf, Path(args.tools_dir), pdfsettings=args.gs_pdfsettings)
+        optimized = optimize_pdf(final_pdf, Path(args.tools_dir), pdfsettings=args.gs_pdfsettings, prefer_pymupdf=bool(swf2xml_replaced_pages))
         optimized_info = verify_pdf(optimized)
     chosen_pdf = Path(optimized_info["path"]) if optimized_info else final_pdf
     final_dest = unique_dest(output_root / chosen_pdf.name)
@@ -1037,6 +1119,7 @@ def main() -> int:
         "swf2xml_candidate_pages": [item["page"] for item in page_analysis if item["needs_swf2xml"]],
         "swf2xml_replaced_pages": sorted(swf2xml_replaced_pages),
         "force_swf2xml_pages": sorted(force_swf2xml_pages),
+        "swf2xml_mode": args.swf2xml_mode,
         "skip_swf2xml_pages": sorted(skip_swf2xml_pages),
         "pdf_page_count": pdf_page_count,
         "final_pdf": final_info,
