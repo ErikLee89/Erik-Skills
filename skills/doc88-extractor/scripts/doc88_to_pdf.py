@@ -728,11 +728,11 @@ def page_sizes_from_config(cfg: dict[str, Any]) -> dict[int, tuple[float, float]
 
 def set_page_box(page: Any, width: float, height: float) -> None:
     current = page.mediabox
-    current_width = float(current.width)
     current_height = float(current.height)
-    left = max(0.0, (current_width - width) / 2) if current_width > width else 0.0
-    # ffdec often puts landscape page content near the top of a square canvas.
-    # Preserve the top edge and crop extra vertical space from the bottom.
+    # Doc88 pageInfo describes the visible top-left page area inside ffdec's
+    # exported canvas: crop extra width from the right and extra height from
+    # the bottom.
+    left = 0.0
     bottom = max(0.0, current_height - height) if current_height > height else 0.0
     box = RectangleObject([left, bottom, left + width, bottom + height])
     page.mediabox = box
@@ -1291,7 +1291,7 @@ def main() -> int:
         "skip_swf2xml_pages": sorted(skip_swf2xml_pages),
         "selected_pages": sorted(selected_pages) if selected_pages else "all",
         "pdf_page_count": len(converted_pages),
-        "page_size_source": "pageInfo_top_aligned",
+        "page_size_source": "pageInfo_top_left",
         "final_pdf": final_info,
         "optimized_pdf": optimized_info,
         "watermark_removal": watermark_info,
