@@ -26,9 +26,10 @@ Useful options:
 
 - The default conversion path is ffdec only, followed by non-rasterized optimization. This is fastest and usually gives the smallest text-selectable PDF.
 - Optimization is enabled by default. It uses skill-local Ghostscript first for strong text-selectable PDF compression on ffdec-only PDFs, auto-downloading it when missing, then falls back to PyMuPDF if Ghostscript is unavailable.
-- The merge step uses Doc88 `pageInfo` page sizes so mixed portrait/landscape documents keep correct page boxes instead of square ffdec canvases.
+- The merge step center-crops page boxes to Doc88 `pageInfo` sizes so mixed portrait/landscape documents keep correct page boxes instead of square ffdec canvases or half-cropped landscape pages.
 - Literal `doc88vounge` / `doc88vuonge` text watermarks are removed by default. The rule is marker-based and must not delete content only because it is rotated, transparent, or large.
 - `--no-optimize`: skip the default non-rasterized optimization step.
+- `--pages`: download and deliver only selected document pages, for example `--pages 20` or `--pages 1,20-22`; required PH headers are still downloaded, but only selected page PK fragments are fetched and converted.
 - `--no-remove-watermark`: keep literal Doc88 marker watermarks in the delivered PDF.
 - `--gs-pdfsettings`: choose Ghostscript compression settings, default `/default`; useful alternatives are `/prepress` and `/ebook`.
 - `--output-root`: override where the final PDF is written. Default: the current user's system Downloads folder.

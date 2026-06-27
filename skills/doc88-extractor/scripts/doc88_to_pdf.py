@@ -58,6 +58,24 @@ def parse_page_set(value: str | None) -> set[int]:
     return pages
 
 
+
+
+def page_selection_label(pages: set[int]) -> str:
+    if not pages:
+        return ""
+    values = sorted(pages)
+    ranges: list[str] = []
+    start = prev = values[0]
+    for value in values[1:]:
+        if value == prev + 1:
+            prev = value
+            continue
+        ranges.append(str(start) if start == prev else f"{start}-{prev}")
+        start = prev = value
+    ranges.append(str(start) if start == prev else f"{start}-{prev}")
+    return "_".join(ranges)
+
+
 def default_downloads_dir() -> Path:
     if sys.platform.startswith("win"):
         # Prefer the user-configured Windows Downloads location. This handles
@@ -211,7 +229,7 @@ def ensure_tools(tools_dir: Path, allow_download: bool) -> tuple[Path, Path]:
     return java, ffdec
 
 
-def build_ebt_jobs(cfg: dict[str, Any], out_dir: Path) -> list[tuple[str, int, str, Path]]:
+def build_ebt_jobs(cfg: dict[str, Any], out_dir: Path, selected_pages: set[int] | None = None) -> list[tuple[str, int, str, Path]]:
     pageids = decode_doc88(cfg["pageInfo"], KEY_MAIN).split(",")
     headnums = cfg["headerInfo"].replace('"', "").split(",")
     ebt_host = cfg["ebt_host"].rstrip("/")
@@ -221,7 +239,10 @@ def build_ebt_jobs(cfg: dict[str, Any], out_dir: Path) -> list[tuple[str, int, s
     for level, headnum in enumerate(headnums, 1):
         name = "getebt-" + encode_doc88(f"{level}-0-{headnum}-{p_swf}") + ".ebt"
         jobs.append(("ph", level, f"{ebt_host}/{name}", out_dir / name))
+    selected_pages = selected_pages or set(range(1, len(pageids) + 1))
     for page, pageid in enumerate(pageids, 1):
+        if page not in selected_pages:
+            continue
         parts = pageid.split("-")
         level = int(parts[0])
         name = "getebt-" + encode_doc88(f"{level}-{parts[3]}-{parts[4]}-{p_swf}-{page}-{p_code}") + ".ebt"
@@ -565,7 +586,7 @@ def convert_single_swf(java: Path, ffdec: Path, swf_path: Path, dest_dir: Path, 
     return result.returncode, (result.stderr or result.stdout)[-2000:]
 
 
-def swfs_to_page_pdfs(out_dir: Path, java: Path, ffdec: Path, workers: int, zoom: float, keep_groups: bool) -> int:
+def swfs_to_page_pdfs(out_dir: Path, java: Path, ffdec: Path, workers: int, zoom: float, keep_groups: bool) -> list[int]:
     swf_dir = out_dir / "swf"
     pdf_group_root = out_dir / "pdf_groups"
     pdf_pages = out_dir / "pdf_pages"
@@ -575,6 +596,7 @@ def swfs_to_page_pdfs(out_dir: Path, java: Path, ffdec: Path, workers: int, zoom
         path.mkdir(parents=True, exist_ok=True)
     swfs = sorted(swf_dir.glob("*.swf"), key=lambda p: int(p.stem))
 
+    page_numbers = [int(swf.stem) for swf in swfs]
     total_pages = len(swfs)
     print(f"Converting {total_pages} SWF files to PDF using {workers} workers...", flush=True)
 
@@ -600,12 +622,12 @@ def swfs_to_page_pdfs(out_dir: Path, java: Path, ffdec: Path, workers: int, zoom
             shutil.copy2(frames, pdf_pages / f"{parent}.pdf")
             moved += 1
 
-    missing = [i for i in range(1, total_pages + 1) if not (pdf_pages / f"{i}.pdf").exists()]
+    missing = [i for i in page_numbers if not (pdf_pages / f"{i}.pdf").exists()]
     if missing:
         raise RuntimeError(f"Missing converted page PDFs: {missing[:20]}")
     if not keep_groups:
         shutil.rmtree(pdf_group_root, ignore_errors=True)
-    return moved
+    return page_numbers
 
 
 def swf2xml_page(java: Path, ffdec: Path, swf: Path, xml: Path) -> tuple[int, str]:
@@ -705,7 +727,14 @@ def page_sizes_from_config(cfg: dict[str, Any]) -> dict[int, tuple[float, float]
 
 
 def set_page_box(page: Any, width: float, height: float) -> None:
-    box = RectangleObject([0, 0, width, height])
+    current = page.mediabox
+    current_width = float(current.width)
+    current_height = float(current.height)
+    left = max(0.0, (current_width - width) / 2) if current_width > width else 0.0
+    # ffdec often puts landscape page content near the top of a square canvas.
+    # Preserve the top edge and crop extra vertical space from the bottom.
+    bottom = max(0.0, current_height - height) if current_height > height else 0.0
+    box = RectangleObject([left, bottom, left + width, bottom + height])
     page.mediabox = box
     page.cropbox = RectangleObject(box)
     page.trimbox = RectangleObject(box)
@@ -716,7 +745,7 @@ def set_page_box(page: Any, width: float, height: float) -> None:
 def merge_pages(
     out_dir: Path,
     title: str,
-    page_count: int,
+    page_numbers: list[int],
     zoom: float,
     unscaled_pages: set[int] | None = None,
     page_sizes: dict[int, tuple[float, float]] | None = None,
@@ -726,7 +755,7 @@ def merge_pages(
     writer = PdfWriter()
     unscaled_pages = unscaled_pages or set()
     page_sizes = page_sizes or {}
-    for i in range(1, page_count + 1):
+    for i in page_numbers:
         reader = PdfReader(str(pdf_pages / f"{i}.pdf"))
         page = reader.pages[0]
         if zoom != 1 and i not in unscaled_pages:
@@ -1148,6 +1177,7 @@ def main() -> int:
     parser.add_argument("--convert-workers", type=int, default=5, help="ffdec conversion workers.")
     parser.add_argument("--zoom", type=float, default=2.0, help="ffdec PDF export zoom; pages are scaled back on merge.")
     parser.add_argument("--no-optimize", action="store_true", help="Skip the default non-rasterized PDF optimization step.")
+    parser.add_argument("--pages", default="", help="Comma/range list of document pages to download and deliver, for example 20 or 1,20-22. Default: all pages.")
     parser.add_argument("--no-remove-watermark", action="store_true", help="Keep literal Doc88 vounge/vuonge watermark text blocks in the delivered PDF.")
     parser.add_argument("--gs-pdfsettings", default="/default", help="Ghostscript PDFSETTINGS value, for example /default, /prepress, or /ebook.")
     parser.add_argument("--no-download-tools", action="store_true", help="Do not download portable Java/ffdec if missing.")
@@ -1184,13 +1214,20 @@ def main() -> int:
     cfg = fetch_config(url, session)
     (out_dir / "index.json").write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
     page_count = len(decode_doc88(cfg["pageInfo"], KEY_MAIN).split(","))
+    selected_pages = parse_page_set(args.pages)
+    invalid_pages = sorted(page for page in selected_pages if page < 1 or page > page_count)
+    if invalid_pages:
+        raise ValueError(f"Selected pages out of range 1-{page_count}: {invalid_pages}")
+    selected_pages_for_run = selected_pages or set(range(1, page_count + 1))
     print(f"Document: {cfg.get('p_name')} | pages={page_count} | p_code={cfg.get('p_code')}", flush=True)
+    if selected_pages:
+        print(f"Selected pages: {sorted(selected_pages)}", flush=True)
 
-    jobs = build_ebt_jobs(cfg, out_dir)
+    jobs = build_ebt_jobs(cfg, out_dir, selected_pages=selected_pages_for_run)
     ebt_summary = download_ebt(jobs, session, workers=args.workers)
     swf_count = rebuild_swfs(out_dir)
     page_analysis = analyze_swfs(out_dir)
-    pdf_page_count = swfs_to_page_pdfs(
+    converted_pages = swfs_to_page_pdfs(
         out_dir,
         java=java,
         ffdec=ffdec,
@@ -1214,10 +1251,13 @@ def main() -> int:
     if args.swf2xml_fallback or force_swf2xml_pages:
         swf2xml_replaced_pages = apply_swf2xml_fallback_pages(out_dir, java, ffdec, page_analysis)
     page_sizes = page_sizes_from_config(cfg)
+    output_title = cfg.get("p_name") or f"doc88_{p_code}"
+    if selected_pages:
+        output_title = f"{output_title}_pages_{page_selection_label(selected_pages)}"
     final_pdf = merge_pages(
         out_dir,
-        cfg.get("p_name") or f"doc88_{p_code}",
-        pdf_page_count,
+        output_title,
+        converted_pages,
         zoom=args.zoom,
         unscaled_pages=swf2xml_replaced_pages,
         page_sizes=page_sizes,
@@ -1249,8 +1289,9 @@ def main() -> int:
         "swf2xml_fallback_enabled": bool(args.swf2xml_fallback or force_swf2xml_pages),
         "swf2xml_mode": args.swf2xml_mode,
         "skip_swf2xml_pages": sorted(skip_swf2xml_pages),
-        "pdf_page_count": pdf_page_count,
-        "page_size_source": "pageInfo",
+        "selected_pages": sorted(selected_pages) if selected_pages else "all",
+        "pdf_page_count": len(converted_pages),
+        "page_size_source": "pageInfo_top_aligned",
         "final_pdf": final_info,
         "optimized_pdf": optimized_info,
         "watermark_removal": watermark_info,
