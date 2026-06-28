@@ -87,9 +87,9 @@ With `--keep-intermediates`, the Downloads folder keeps a `doc88_<p_code>_ebt` w
 
 ## swf2xml 修复模式 / swf2xml Repair Mode
 
-大多数文档不需要 swf2xml，所以默认关闭。少数文档会因为 Doc88 自定义字体导致 ffdec 显示错误，例如多出 `]`、括号错误、公式错乱、横版页文字异常。
+大多数页面默认走 ffdec。脚本会自动把两类高风险页面切换到 swf2xml：`pageInfo` 标记为横版的页面，以及 ffdec 文字层已经高置信损坏的页面，例如大量 `?`、没有中文、括号/公式错乱。其他问题页也可以手动强制。
 
-Most documents do not need swf2xml, so it is disabled by default. A few documents use Doc88 custom fonts that ffdec may mis-map, causing extra `]`, wrong brackets, broken formulas, or bad landscape-page text.
+Most pages use ffdec by default. The script automatically switches two high-risk page types to swf2xml: pages marked as landscape by `pageInfo`, and pages whose ffdec text layer is clearly broken, such as many `?` characters, no CJK text, or badly mapped brackets/formulas. Other pages can still be forced manually.
 
 swf2xml fallback 会先保留 ffdec 原页中的图片、线框和其他背景对象，删除 ffdec 的可见错误文字，再叠加从 SWF 字形轮廓重建的文字。这样通常能保持图片和表格背景，同时修复文字视觉错误。
 
@@ -108,6 +108,7 @@ Available modes:
 --force-swf2xml-pages 1,48-50
 --skip-swf2xml-pages 8,10
 --no-auto-swf2xml-landscape
+--no-auto-swf2xml-broken-text
 ```
 
 ## 常用参数 / Useful Options

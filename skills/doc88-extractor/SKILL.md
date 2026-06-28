@@ -38,10 +38,11 @@ Useful options:
 - `--keep-intermediates`: keep EBT/SWF/page-PDF working files for debugging.
 - `--keep-groups`: also keep temporary grouped SWF/PDF conversion folders.
 - `--force-swf2xml-pages`: force selected pages through the Doc88 XML vector renderer, e.g. `1,48-50`.
-- `--skip-swf2xml-pages`: keep selected pages on the normal ffdec PDF path even if diagnostics or landscape-page detection mark them as fallback candidates.
-- `--no-auto-swf2xml-landscape`: disable the default rule that routes landscape pages through swf2xml fallback.
-- `--swf2xml-fallback`: enable automatic XML vector reconstruction for detected problematic pages. Disabled by default because most documents work best with ffdec.
-- `--no-swf2xml-fallback`: explicitly keep auto-detected pages on the ffdec path; this is the default.
+- `--skip-swf2xml-pages`: keep selected pages on the normal ffdec PDF path even if diagnostics, broken-text detection, or landscape-page detection mark them as fallback candidates.
+- `--no-auto-swf2xml-landscape`: disable the default rule that routes `pageInfo` landscape pages through swf2xml fallback.
+- `--no-auto-swf2xml-broken-text`: disable the default rule that routes high-confidence broken ffdec text layers through swf2xml fallback.
+- `--swf2xml-fallback`: enable XML vector reconstruction for all detected problematic pages according to `--swf2xml-mode`. Some high-confidence cases are already auto-routed by default.
+- `--no-swf2xml-fallback`: keep non-auto detected pages on the ffdec path; this is the default.
 - `--swf2xml-mode`: choose fallback detection strictness when `--swf2xml-fallback` is enabled. Default `auto` handles broken text layers plus high-confidence visual glyph risks such as symbol fonts that render brackets/formula glyphs incorrectly. `conservative` uses only broken text layers, `aggressive` also replaces pages with risky special fonts, and `all` replaces every static fallback candidate.
 
 The script prints a JSON summary containing `final_pdf`, optional `optimized_pdf`, page count, size, output directory, detected swf2xml candidate pages, and a review reminder.
@@ -53,7 +54,7 @@ By default, the script leaves only the final PDF in the output root and deletes 
 With `--keep-intermediates`, the script keeps `doc88_<p_code>_ebt` under the output root with:
 
 - `index.json`: decoded page configuration.
-- `page_analysis.json`: deterministic per-page SWF/PDF diagnostics. Candidate pages are reported in the summary; they are replaced only when `--swf2xml-fallback` or `--force-swf2xml-pages` is used.
+- `page_analysis.json`: deterministic per-page SWF/PDF diagnostics. Candidate pages are reported in the summary; `pageInfo` landscape pages, high-confidence broken-text pages, forced pages, and pages covered by `--swf2xml-fallback` are replaced.
 - `*.ebt`: downloaded PH/PK files from the listed preview configuration.
 - `swf/`: rebuilt SWF pages.
 - `pdf_pages/`: one PDF per page; detected fallback pages are replaced by hybrid PDFs that keep the ffdec page background/images and overlay `swf2xml` text outlines.
@@ -66,7 +67,7 @@ With `--keep-intermediates`, the script keeps `doc88_<p_code>_ebt` under the out
 ## Notes
 
 - The normal ffdec path is the default and is text-selectable when the source SWF contains text objects or text layers.
-- Landscape pages are routed through swf2xml fallback by default because ffdec is more likely to mis-render rotated/landscape Doc88 pages; use `--no-auto-swf2xml-landscape` to opt out.
+- `pageInfo` landscape pages are routed through swf2xml fallback by default because ffdec is more likely to mis-render rotated/landscape Doc88 pages; use `--no-auto-swf2xml-landscape` to opt out. Pages with high-confidence broken ffdec text layers are also auto-routed; use `--no-auto-swf2xml-broken-text` to opt out.
 - After every run, review the delivered PDF for page accuracy, especially landscape pages, formulas, tables, brackets, and pages listed in `swf2xml_candidate_pages`.
 - The `swf2xml` fallback keeps vector text outlines and preserves original ffdec page backgrounds/images by removing visible ffdec text and overlaying the rebuilt outlines. Its diagnostics report trigger reasons, image/drawing/text object counts before and after hybridization, removed text objects, hidden text layer status, and optimization status. It can add an invisible text layer only when the original ffdec page has a usable text layer. If diagnostics mark that original text as garbled, the fallback deliberately skips the text layer rather than embedding wrong searchable text.
 - Fallback pages are optimized with PyMuPDF font subsetting after the hidden text layer is added. If any fallback pages are used, final optimization also prefers PyMuPDF instead of Ghostscript so hidden-text ToUnicode mappings are not rewritten incorrectly.

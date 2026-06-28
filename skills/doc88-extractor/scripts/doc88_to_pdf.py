@@ -819,8 +819,11 @@ def overlay_swf2xml_on_ffdec_background(
         return {"status": "skipped", "reason": f"{type(exc).__name__}: {exc}", "text_strip": strip_info}
 
 
-def apply_swf2xml_fallback_pages(out_dir: Path, java: Path, ffdec: Path, analysis: list[dict[str, Any]], zoom: float) -> set[int]:
-    pages = [int(item["page"]) for item in analysis if item.get("needs_swf2xml")]
+def apply_swf2xml_fallback_pages(out_dir: Path, java: Path, ffdec: Path, analysis: list[dict[str, Any]], zoom: float, pages_to_replace: set[int] | None = None) -> set[int]:
+    if pages_to_replace is None:
+        pages = [int(item["page"]) for item in analysis if item.get("needs_swf2xml")]
+    else:
+        pages = sorted(int(page) for page in pages_to_replace)
     if not pages:
         return set()
     xml_dir = out_dir / "xml_pages"
@@ -1212,6 +1215,23 @@ def page_pdf_text_quality(pdf_path: Path) -> dict[str, Any]:
     }
 
 
+def is_high_confidence_broken_text_layer(item: dict[str, Any]) -> bool:
+    quality = item.get("pdf_text_quality", {}) or {}
+    reasons = set(quality.get("reasons", []) or [])
+    if reasons.intersection({"question_mark_text_layer", "no_cjk_in_large_text_layer", "garbled_repeated_cjk_markers"}):
+        return True
+
+    nonspace = int(quality.get("nonspace") or 0)
+    cjk = int(quality.get("cjk") or 0)
+    question = int(quality.get("question_marks") or 0)
+    replacement = int(quality.get("replacement_chars") or 0)
+    bad_common = int(quality.get("bad_common_markers") or 0)
+    if nonspace >= 120 and cjk == 0 and (question + replacement + bad_common) >= 30:
+        return True
+    if nonspace >= 80 and cjk == 0 and (question + replacement) / max(nonspace, 1) >= 0.25:
+        return True
+    return False
+
 def add_pdf_quality_to_analysis(out_dir: Path, analysis: list[dict[str, Any]], swf2xml_mode: str) -> list[dict[str, Any]]:
     pdf_pages = out_dir / "pdf_pages"
     risky: list[int] = []
@@ -1362,6 +1382,7 @@ def main() -> int:
     parser.add_argument("--force-swf2xml-pages", default="", help="Comma/range list of pages to force through swf2xml fallback, for example 1,48-50. This works even when --swf2xml-fallback is not set.")
     parser.add_argument("--skip-swf2xml-pages", default="", help="Comma/range list of pages to keep as original ffdec PDFs even if detected.")
     parser.add_argument("--no-auto-swf2xml-landscape", action="store_true", help="Do not automatically route landscape pages through swf2xml fallback.")
+    parser.add_argument("--no-auto-swf2xml-broken-text", action="store_true", help="Do not automatically route pages with high-confidence broken ffdec text layers through swf2xml fallback.")
     args = parser.parse_args()
 
     url = normalize_url(args.url_or_id)
@@ -1422,6 +1443,13 @@ def main() -> int:
     }
     if args.no_auto_swf2xml_landscape:
         landscape_swf2xml_pages = set()
+    broken_text_swf2xml_pages = {
+        int(item["page"])
+        for item in page_analysis
+        if int(item["page"]) in selected_pages_set and is_high_confidence_broken_text_layer(item)
+    }
+    if args.no_auto_swf2xml_broken_text:
+        broken_text_swf2xml_pages = set()
     for item in page_analysis:
         page_no = int(item["page"])
         if page_no in force_swf2xml_pages:
@@ -1430,13 +1458,20 @@ def main() -> int:
         if page_no in landscape_swf2xml_pages:
             item["needs_swf2xml"] = True
             item.setdefault("reasons", []).append("landscape_page_auto_swf2xml")
+        if page_no in broken_text_swf2xml_pages:
+            item["needs_swf2xml"] = True
+            item.setdefault("reasons", []).append("broken_text_auto_swf2xml")
         if page_no in skip_swf2xml_pages:
             item["needs_swf2xml"] = False
             item.setdefault("reasons", []).append("manual_skip_swf2xml")
     (out_dir / "page_analysis.json").write_text(json.dumps(page_analysis, ensure_ascii=False, indent=2), encoding="utf-8")
     swf2xml_replaced_pages: set[int] = set()
-    if args.swf2xml_fallback or force_swf2xml_pages or landscape_swf2xml_pages:
-        swf2xml_replaced_pages = apply_swf2xml_fallback_pages(out_dir, java, ffdec, page_analysis, zoom=args.zoom)
+    auto_swf2xml_pages = landscape_swf2xml_pages | broken_text_swf2xml_pages
+    detected_swf2xml_pages = {int(item["page"]) for item in page_analysis if item.get("needs_swf2xml")}
+    swf2xml_pages_to_replace = (detected_swf2xml_pages if args.swf2xml_fallback else set()) | force_swf2xml_pages | auto_swf2xml_pages
+    swf2xml_pages_to_replace -= skip_swf2xml_pages
+    if swf2xml_pages_to_replace:
+        swf2xml_replaced_pages = apply_swf2xml_fallback_pages(out_dir, java, ffdec, page_analysis, zoom=args.zoom, pages_to_replace=swf2xml_pages_to_replace)
     output_title = cfg.get("p_name") or f"doc88_{p_code}"
     if selected_pages:
         output_title = f"{output_title}_pages_{page_selection_label(selected_pages)}"
@@ -1471,10 +1506,13 @@ def main() -> int:
         "swf_count": swf_count,
         "swf2xml_candidate_pages": [item["page"] for item in page_analysis if item["needs_swf2xml"]],
         "swf2xml_replaced_pages": sorted(swf2xml_replaced_pages),
+        "swf2xml_pages_to_replace": sorted(swf2xml_pages_to_replace),
         "force_swf2xml_pages": sorted(force_swf2xml_pages),
         "auto_swf2xml_landscape_pages": sorted(landscape_swf2xml_pages),
         "auto_swf2xml_landscape_enabled": not args.no_auto_swf2xml_landscape,
-        "swf2xml_fallback_enabled": bool(args.swf2xml_fallback or force_swf2xml_pages or landscape_swf2xml_pages),
+        "auto_swf2xml_broken_text_pages": sorted(broken_text_swf2xml_pages),
+        "auto_swf2xml_broken_text_enabled": not args.no_auto_swf2xml_broken_text,
+        "swf2xml_fallback_enabled": bool(swf2xml_pages_to_replace),
         "swf2xml_mode": args.swf2xml_mode,
         "skip_swf2xml_pages": sorted(skip_swf2xml_pages),
         "selected_pages": sorted(selected_pages) if selected_pages else "all",
