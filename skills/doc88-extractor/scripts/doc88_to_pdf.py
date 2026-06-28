@@ -669,6 +669,65 @@ def subset_fonts_in_place(pdf_path: Path) -> dict[str, Any]:
         return {"status": "skipped", "reason": f"{type(exc).__name__}: {exc}", "before_bytes": before}
 
 
+def pdf_page_object_diagnostics(pdf_path: Path) -> dict[str, Any]:
+    try:
+        import fitz
+    except Exception as exc:
+        return {"status": "skipped", "reason": f"pymupdf_unavailable:{type(exc).__name__}"}
+    try:
+        doc = fitz.open(pdf_path)
+        if not doc.page_count:
+            doc.close()
+            return {"status": "empty"}
+        page = doc[0]
+        text_dict = page.get_text("dict")
+        text_blocks = sum(1 for block in text_dict.get("blocks", []) if block.get("type") == 0)
+        image_blocks = sum(1 for block in text_dict.get("blocks", []) if block.get("type") == 1)
+        diagnostics = {
+            "status": "ok",
+            "path": str(pdf_path),
+            "size_bytes": pdf_path.stat().st_size if pdf_path.exists() else 0,
+            "page_count": doc.page_count,
+            "page_width": round(float(page.rect.width), 3),
+            "page_height": round(float(page.rect.height), 3),
+            "image_xobjects": len(page.get_images(full=True)),
+            "image_blocks": image_blocks,
+            "drawing_objects": len(page.get_drawings()),
+            "text_blocks": text_blocks,
+            "text_chars": len(page.get_text()),
+            "content_streams": len(page.get_contents() or []),
+        }
+        doc.close()
+        return diagnostics
+    except Exception as exc:
+        return {"status": "skipped", "reason": f"{type(exc).__name__}: {exc}", "path": str(pdf_path)}
+
+
+def swf2xml_analysis_summary(item: dict[str, Any]) -> dict[str, Any]:
+    quality = item.get("pdf_text_quality", {}) or {}
+    keys = [
+        "needs_swf2xml",
+        "visual_glyph_risk",
+        "nonspace",
+        "chars",
+        "digits",
+        "math_symbols",
+        "bracket_symbols",
+        "replacement_chars",
+        "question_marks",
+        "high_number_fonts",
+        "reasons",
+        "visual_reasons",
+    ]
+    return {
+        "page": item.get("page"),
+        "needs_swf2xml": item.get("needs_swf2xml"),
+        "static_swf2xml_candidate": item.get("static_swf2xml_candidate"),
+        "reasons": item.get("reasons", []),
+        "pdf_text_quality": {key: quality.get(key) for key in keys if key in quality},
+    }
+
+
 def strip_pdf_text_operators(source_pdf: Path, dest_pdf: Path) -> dict[str, Any]:
     """Keep images/vector drawing from a PDF page while removing visible text objects."""
     try:
@@ -692,10 +751,19 @@ def strip_pdf_text_operators(source_pdf: Path, dest_pdf: Path) -> dict[str, Any]
                     doc.update_stream(xref, stream.encode("latin-1"))
                     removed += count
                     changed_streams += 1
+        source_diagnostics = pdf_page_object_diagnostics(source_pdf)
         doc.save(tmp, garbage=4, clean=True, deflate=True)
         doc.close()
         tmp.replace(dest_pdf)
-        return {"status": "ok", "removed_text_objects": removed, "changed_streams": changed_streams}
+        return {
+            "status": "ok",
+            "removed_text_objects": removed,
+            "changed_streams": changed_streams,
+            "source_pdf": str(source_pdf),
+            "dest_pdf": str(dest_pdf),
+            "source_diagnostics": source_diagnostics,
+            "background_diagnostics": pdf_page_object_diagnostics(dest_pdf),
+        }
     except Exception as exc:
         try:
             if tmp.exists():
@@ -743,6 +811,8 @@ def overlay_swf2xml_on_ffdec_background(
             "page_width": page_w,
             "page_height": page_h,
             "zoom": zoom,
+            "vector_diagnostics": pdf_page_object_diagnostics(vector_pdf),
+            "hybrid_diagnostics": pdf_page_object_diagnostics(dest_pdf),
         }
     except Exception as exc:
         return {"status": "skipped", "reason": f"{type(exc).__name__}: {exc}", "text_strip": strip_info}
@@ -775,6 +845,9 @@ def apply_swf2xml_fallback_pages(out_dir: Path, java: Path, ffdec: Path, analysi
             info = rebuild_pdf_page_from_swf_xml(xml, replacement_pdf, page_w, page_h)
             analysis_item = next((item for item in analysis if int(item.get("page", -1)) == page), {})
             quality = analysis_item.get("pdf_text_quality", {})
+            info["analysis_summary"] = swf2xml_analysis_summary(analysis_item)
+            info["swf_frame"] = {"width": page_w, "height": page_h, "twips": list(frame)}
+            info["original_pdf_diagnostics"] = pdf_page_object_diagnostics(original_pdf) if original_pdf.exists() else {"status": "missing"}
             vector_only_pdf = xml_dir / f"{page}_swf2xml_vector_only.pdf"
             shutil.copy2(replacement_pdf, vector_only_pdf)
             info["vector_only_pdf"] = str(vector_only_pdf)
@@ -794,6 +867,7 @@ def apply_swf2xml_fallback_pages(out_dir: Path, java: Path, ffdec: Path, analysi
             else:
                 info["hidden_text_layer"] = add_hidden_text_layer_from_pdf(replacement_pdf, original_pdf, quality) if original_pdf.exists() else {"status": "skipped", "reason": "missing_original_pdf"}
             info["page_optimization"] = subset_fonts_in_place(replacement_pdf)
+            info["final_page_diagnostics"] = pdf_page_object_diagnostics(replacement_pdf)
             info["page"] = page
             replacements.append(info)
             print(f"swf2xml fallback replaced page {page}: glyphs={info['drawn_glyphs']} shapes={info['drawn_shapes']}", flush=True)

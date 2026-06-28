@@ -58,7 +58,7 @@ With `--keep-intermediates`, the script keeps `doc88_<p_code>_ebt` under the out
 - `pdf_pages/`: one PDF per page; detected fallback pages are replaced by hybrid PDFs that keep the ffdec page background/images and overlay `swf2xml` text outlines.
 - `pdf_pages_ffdec_original/`: original ffdec page PDFs saved before fallback replacement; used as a background source and optional hidden text layer source.
 - `xml_pages/`: XML exports for pages rebuilt through the `swf2xml` fallback, plus vector-only diagnostic PDFs.
-- `swf2xml_replacements.json`: per-page replacement diagnostics, including whether ffdec background hybridization and a hidden text layer were added or skipped.
+- `swf2xml_replacements.json`: per-page replacement diagnostics, including trigger reasons, original/vector/hybrid page object counts, preserved images/line art, removed ffdec text objects, background hybridization, hidden text layer status, and optimization status.
 - final `*_doc88_preview.pdf`.
 - optional `*_vector_optimized.pdf`.
 
@@ -66,7 +66,7 @@ With `--keep-intermediates`, the script keeps `doc88_<p_code>_ebt` under the out
 
 - The normal ffdec path is the default and is text-selectable when the source SWF contains text objects or text layers.
 - After every run, review the delivered PDF for page accuracy, especially landscape pages, formulas, tables, brackets, and pages listed in `swf2xml_candidate_pages`.
-- The `swf2xml` fallback keeps vector text outlines and now preserves original ffdec page backgrounds/images by removing visible ffdec text and overlaying the rebuilt outlines. It can add an invisible text layer only when the original ffdec page has a usable text layer. If diagnostics mark that original text as garbled, the fallback deliberately skips the text layer rather than embedding wrong searchable text.
+- The `swf2xml` fallback keeps vector text outlines and preserves original ffdec page backgrounds/images by removing visible ffdec text and overlaying the rebuilt outlines. Its diagnostics report trigger reasons, image/drawing/text object counts before and after hybridization, removed text objects, hidden text layer status, and optimization status. It can add an invisible text layer only when the original ffdec page has a usable text layer. If diagnostics mark that original text as garbled, the fallback deliberately skips the text layer rather than embedding wrong searchable text.
 - Fallback pages are optimized with PyMuPDF font subsetting after the hidden text layer is added. If any fallback pages are used, final optimization also prefers PyMuPDF instead of Ghostscript so hidden-text ToUnicode mappings are not rewritten incorrectly.
 - The fallback renderer is Doc88-document-page-specific. It handles the common Doc88 glyph-outline and line-shape patterns, but it is not a complete Flash/SWF renderer.
 - Large PDFs are expected because ffdec and the XML fallback preserve many vector, font, and image objects. Use default optimization first; do not rasterize unless the user explicitly accepts image-only PDFs.

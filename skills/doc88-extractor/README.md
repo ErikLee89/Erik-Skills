@@ -120,7 +120,7 @@ ffdec-only documents are optimized with Ghostscript by default, which usually re
 
 Most documents do not need swf2xml. It is disabled by default because ffdec is usually smaller and faster.
 
-当某些页出现多余 `]`、横版文字错乱、公式或括号错误时，可以启用 swf2xml。它会从 SWF 的字形轮廓重新绘制页面，常常能修复 ffdec 的字体映射问题。
+当某些页出现多余 `]`、横版文字错乱、公式或括号错误时，可以启用 swf2xml。它会先保留 ffdec 原页中的图片、线框和其他背景对象，删除 ffdec 的可见错误文字，再叠加从 SWF 字形轮廓重建的文字，常常能修复 ffdec 的字体映射问题。
 
 Use swf2xml when some pages show extra `]`, broken landscape text, or wrong formula/bracket glyphs. It redraws text from SWF glyph outlines while preserving images, line art, and other background objects from the original ffdec page. This often fixes ffdec font-mapping issues.
 
@@ -173,10 +173,10 @@ With `--keep-intermediates`, the working folder contains:
 - `run_summary.json`：运行摘要 / Run summary.
 - `*.ebt`：下载的预览分片 / Downloaded preview fragments.
 - `swf/`：重建后的 SWF 页面 / Rebuilt SWF pages.
-- `pdf_pages/`：每页一个 PDF / One PDF per page.
+- `pdf_pages/`：每页一个 PDF；fallback 页是 ffdec 背景 + swf2xml 文字轮廓的混合页 / One PDF per page; fallback pages are hybrid pages with ffdec background plus swf2xml text outlines.
 - `pdf_pages_ffdec_original/`：swf2xml 替换前的原始 ffdec 页面 / Original ffdec pages before swf2xml replacement.
-- `xml_pages/`：swf2xml 导出的 XML / XML exported by swf2xml.
-- `swf2xml_replacements.json`：替换诊断结果 / Replacement diagnostics.
+- `xml_pages/`：swf2xml 导出的 XML 和纯 swf2xml 诊断页 / XML exported by swf2xml plus vector-only diagnostic PDFs.
+- `swf2xml_replacements.json`：替换诊断结果，包括触发原因、背景混合、保留图片/线框、隐藏文字层和优化状态 / Replacement diagnostics, including trigger reasons, background hybridization, preserved images/line art, hidden text layer, and optimization status.
 
 ## 工具和依赖 / Tools and Dependencies
 
