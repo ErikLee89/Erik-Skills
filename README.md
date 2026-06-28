@@ -7,9 +7,20 @@
 <a id="english"></a>
 ## English
 
-This repository is a collection of various skills, scripts, and automation tools designed to improve productivity. These skills are generally applicable and can be used by any AI agent, automation script, or human developer.
+This repository is a collection of reusable skills, scripts, and automation tools designed to improve productivity. These skills are generally applicable and can be used by AI agents, automation scripts, or human developers.
 
 ### Included Skills
+
+#### 📄 [doc88-extractor](./skills/doc88-extractor)
+A Doc88 / 道客巴巴 preview-document extractor that converts authorized `doc88.com/p-*.html` URLs into PDFs, with ffdec conversion by default and targeted swf2xml repair for problematic pages.
+
+**Key Features:**
+- **Authorized Preview Pipeline:** Downloads only EBT/SWF resources explicitly listed by the page configuration; no hidden-page scanning, login bypass, captcha bypass, or paid-access bypass.
+- **Default ffdec Conversion:** Converts SWF previews into non-rasterized PDFs, then merges and optimizes them for everyday use.
+- **Selected Page Downloads:** Supports `--pages` for extracting one page or a range without downloading every page fragment.
+- **swf2xml Repair Mode:** Rebuilds problematic text from SWF glyph outlines while preserving ffdec images, line art, and page backgrounds.
+- **Diagnostics:** Writes per-page analysis and fallback diagnostics when intermediates are kept, including trigger reasons, preserved images, removed text objects, and hidden-text-layer status.
+- **Clean Output:** Writes the final PDF to the system Downloads folder and removes the per-document working folder by default.
 
 #### 📝 [paper-md-to-word](./skills/paper-md-to-word)
 A Markdown-to-Word manuscript converter for academic and technical papers, with editable Word equations and Chinese paper formatting support.
@@ -23,27 +34,37 @@ A Markdown-to-Word manuscript converter for academic and technical papers, with 
 - **Reusable Inputs:** Keeps paper-specific paths, titles, images, and special formula mappings outside the skill so the converter remains reusable.
 
 #### 📚 [weread-to-pdf](./skills/weread-to-pdf)
-A highly specialized HTML-to-PDF book converter designed specifically for WeChat Reading (微信读书) exports and other web-exported books. 
+A specialized HTML-to-PDF book converter designed for WeChat Reading (微信读书) exports and other web-exported books.
 
 **Key Features:**
-- **Token-Efficient Execution:** The conversion runs locally without sending the full book through an AI context window; agent orchestration still uses a small amount of context.
-- **Smart Cover Handling:** Automatically extracts the book's cover, compares it with Douban's high-res covers, and dynamically replaces it. Ensures the cover image fits full-screen (A4 size).
-- **Anti-Pagination Engine:** Prevents images from separating from their captions, ensures code blocks (`pre`, `code`) stay together, and dynamically restrains image heights to prevent page-overflows.
-- **Chromium Bug Bypass:** Automatically splits long URLs within code blocks into 15-character chunks to prevent Chromium's render truncation bug when `page-break-inside: avoid` is triggered.
-- **Modular Execution Steps:** Run the conversion pipeline in modular steps (`--step cover`, `--step html`, `--step pdf`) to skip heavy Chromium processing and generate web readers instantly.
-- **Web Reader Cleaner & Enhancer:** Strips away decorative but distracting elements (like "bleed-pic" chapter headers) in the `index_read.html` reader view. Automatically prevents layout shifts during native image loading by computing absolute aspect ratios.
-- **Perfect Chinese Encoding:** Safely preserves Chinese colons (`：`) and other characters in output filenames without mangling them.
-- **Native PDF Compression:** Uses PyMuPDF for lossless structural compression. File-size reduction depends on the source PDF and can be bypassed via `--no-compress`.
-- **Offline LXGW WenKai Injection:** Bundled with the gorgeous LXGW WenKai Lite (霞鹜文楷) webfont. Use `--font lxgw` to instantly transform the entire book into a premium calligraphy-style layout, completely offline.
+- **Token-Efficient Execution:** The conversion runs locally without sending the full book through an AI context window; agent orchestration still uses only a small amount of context.
+- **Smart Cover Handling:** Automatically extracts the book cover, compares it with Douban high-resolution covers, and can replace it dynamically.
+- **Anti-Pagination Engine:** Prevents images from separating from captions, keeps code blocks together, and dynamically restrains image heights to prevent page overflow.
+- **Chromium Bug Bypass:** Splits long URLs inside code blocks to reduce Chromium truncation issues triggered by `page-break-inside: avoid`.
+- **Modular Execution Steps:** Supports `--step cover`, `--step html`, and `--step pdf` to skip heavy stages when only part of the pipeline is needed.
+- **Web Reader Cleaner:** Cleans distracting web-export elements and stabilizes native image layout in the generated reader view.
+- **Native PDF Compression:** Uses PyMuPDF for lossless structural compression; file-size reduction depends on the source PDF and can be bypassed.
+- **Offline LXGW WenKai Injection:** Bundles LXGW WenKai Lite (霞鹜文楷) for offline typographic styling.
 
 ---
 
 <a id="中文"></a>
 ## 中文
 
-这个仓库是我个人收集和开发的各种技能（Skills）、脚本与自动化工具的集合，旨在全面提升工作效率。这些技能具有通用性，可以被任何 AI 智能体、自动化工作流或开发者直接调用。
+这个仓库是我个人收集和开发的各种技能（Skills）、脚本与自动化工具集合，用来提升日常工作效率。这些技能尽量保持通用，可以被 AI 智能体、自动化工作流或开发者直接调用。
 
 ### 包含的技能
+
+#### 📄 [doc88-extractor](./skills/doc88-extractor)
+一个 Doc88 / 道客巴巴预览文档提取工具，可以把有权限访问的 `doc88.com/p-*.html` 链接转换成 PDF。默认使用 ffdec 路线，必要时可对问题页面启用 swf2xml 修复。
+
+**核心功能：**
+- **授权预览链路：** 只下载页面配置中明确列出的 EBT/SWF 预览资源，不扫描隐藏页，不绕过登录、验证码、滑块或付费访问。
+- **默认 ffdec 转换：** 将 SWF 预览页转换为非栅格化 PDF，再合并和压缩，适合日常使用。
+- **指定页下载：** 支持 `--pages` 提取单页或页码范围，不必下载所有页面分片。
+- **swf2xml 修复模式：** 对问题页从 SWF 字形轮廓重建文字，同时保留 ffdec 原页中的图片、线框和背景。
+- **诊断信息：** 保留过程文件时会输出逐页分析和 fallback 诊断，包括触发原因、保留图片、删除文字对象和隐藏文字层状态。
+- **干净输出：** 最终 PDF 写入系统下载文件夹，默认删除每个文档的过程工作目录。
 
 #### 📝 [paper-md-to-word](./skills/paper-md-to-word)
 一个面向学术和技术论文的 Markdown 转 Word 工具，支持可编辑 Word 公式和中文论文格式。
@@ -57,15 +78,14 @@ A highly specialized HTML-to-PDF book converter designed specifically for WeChat
 - **可复用设计：** 具体论文的路径、标题、图片和特殊公式映射不写入 skill 本体，便于长期复用。
 
 #### 📚 [weread-to-pdf](./skills/weread-to-pdf)
-一个高度定制化的 HTML 转 PDF 电子书排版神器，专门为微信读书（WeRead）导出以及其他网页端书籍量身打造。
+一个面向微信读书（WeRead）导出和其他网页端书籍的 HTML 转 PDF 工具。
 
 **核心功能：**
-- **Token 友好的本地执行：** AI 无需在上下文中读取整本书籍源码，转换由本地脚本完成；智能体编排和日志检查仍会使用少量 Token。
-- **智能封面处理：** 自动提取书籍封面，与豆瓣高清封面库比对并替换。解除最高高度限制，使封面图铺满 A4 尺寸。
-- **防断页排版引擎：** 强制图片与描述文字不可分割，确保代码块（`pre`, `code`）不会被切分到两页，动态限制普通插图高度以防止版面溢出。
-- **跨行超链接修复：** 针对长链接在防断页代码块中可能被 Chromium 截断的问题，采用“15字符分块 + 避免高亮器二次重绘”的处理方式改善渲染。
-- **模块化运行：** 支持通过 `--step` 参数进行解耦运行（如仅查验封面、仅生成网页阅读器、仅生成 PDF），跳过不需要的耗时阶段。
-- **网页阅读器净化与增强：** 针对生成的网页版阅读器（`index_read.html`），自动剔除会干扰视觉的微信读书专属“章首大图”（bleed-pic），并在底层注入原生物理高宽比属性，彻底消灭懒加载带来的布局侧边栏错位抖动问题。
-- **中文编码：** 支持 Windows 原生文件命名特性，不再将书名中的中文全角冒号（`：`）强制转换为下划线。
-- **无损结构压缩：** 默认调用 PyMuPDF 对生成的 PDF 进行无损结构压缩，具体压缩幅度取决于原始文件。支持通过 `--no-compress` 参数保留原始体积。
-- **内置霞鹜文楷：** 技能仓库原生内置 25MB 切片版“霞鹜文楷 Lite”字体包。只需追加 `--font lxgw`，即可在纯离线环境下瞬间让整本电子书焕发极具呼吸感的手写排版质感，且底层附带专属字号放大视觉补偿。
+- **Token 友好的本地执行：** AI 无需在上下文中读取整本书籍源码，转换由本地脚本完成。
+- **智能封面处理：** 自动提取书籍封面，并可与豆瓣高清封面库比对替换。
+- **防断页排版：** 防止图片与说明文字分离，确保代码块不被切分到两页，并动态限制图片高度。
+- **跨行超链接修复：** 改善长链接在 Chromium PDF 渲染中的截断问题。
+- **模块化运行：** 支持按步骤生成封面、网页阅读器或 PDF，跳过不需要的耗时阶段。
+- **网页阅读器增强：** 清理干扰视觉的导出元素，并稳定图片加载时的版面。
+- **无损结构压缩：** 默认使用 PyMuPDF 对生成 PDF 做结构压缩。
+- **内置霞鹜文楷：** 可离线使用 LXGW WenKai Lite 字体提升排版质感。

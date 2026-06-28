@@ -2,31 +2,51 @@
 
 ## 这是什么 / What This Skill Does
 
-这个 skill 用来把你有权限访问的道客巴巴 Doc88 预览文档转换成可复制文字的 PDF。你给它一个 `doc88.com/p-*.html` 链接，它会读取页面里公开列出的预览资源，下载对应的 EBT/SWF 分片，然后合成为 PDF。
+这个 skill 用来把你有权限访问的 Doc88 / 道客巴巴预览文档转换成 PDF。你提供一个 `doc88.com/p-*.html` 链接或文档 ID，脚本会读取页面 `m_main.init(...)` 中公开列出的预览资源，下载对应的 EBT/SWF 分片，并合成为 PDF。
 
-This skill converts authorized Doc88 preview documents into text-selectable PDFs. Give it a `doc88.com/p-*.html` URL, and it downloads only the EBT/SWF preview resources explicitly listed by the page, then converts them into a PDF.
+This skill converts authorized Doc88 preview documents into PDFs. Provide a `doc88.com/p-*.html` URL or document ID, and the script reads the preview resources explicitly listed in `m_main.init(...)`, downloads the corresponding EBT/SWF fragments, and merges them into a PDF.
 
-默认走 **ffdec 转换路线**。这条路线适合大多数文档：速度快、文件小，通常也能保留可复制文字。
+默认路线是 **ffdec 转换 + 非栅格化压缩**。这适合大多数文档：速度快、文件较小，通常也能保留可复制文字。
 
-The default route is **ffdec conversion**. It is the best first choice for most documents: faster, smaller, and usually text-selectable.
+The default route is **ffdec conversion plus non-rasterized optimization**. It is the best first choice for most documents: fast, compact, and usually text-selectable.
 
 ## 使用边界 / Access Boundary
 
-请只用于你有权访问的文档。脚本只下载页面 `m_main.init(...)` 配置里列出的预览资源，不扫描隐藏页，不绕过登录，不绕过滑块或验证码，也不绕过付费访问。
+请只用于你有权访问的文档。脚本只下载页面配置中列出的预览资源，不扫描隐藏页，不调用 `get_more`，不绕过登录、滑块、验证码或付费访问。
 
-Use this only for documents you are authorized to access. The script only fetches preview resources listed in the page's `m_main.init(...)` configuration. It does not scan hidden pages, bypass login, bypass slider/captcha checks, or bypass paid access.
+Use this only for documents you are authorized to access. The script only downloads preview resources listed by the page configuration. It does not scan hidden pages, call `get_more`, bypass login, bypass slider/captcha checks, or bypass paid access.
 
 如果页面没有暴露 `m_main.init(...)`，通常说明需要先登录或验证。请先用合法方式打开页面，或提供你已经取得授权的本地文件。
 
 If `m_main.init(...)` is not available, the page probably requires login or verification. Open it with authorized access first, or provide local authorized files.
 
-## 最常用命令 / Basic Command
+## 常用命令 / Basic Commands
+
+下载完整文档：
+
+Download a full document:
 
 ```bash
 python -X utf8 scripts/doc88_to_pdf.py "https://www.doc88.com/p-123456.html"
 ```
 
-默认情况下，最终 PDF 会放到当前系统用户的“下载”文件夹。过程工作目录会在运行结束时自动删除，只保留最终 PDF。
+只下载指定页：
+
+Download selected pages only:
+
+```bash
+python -X utf8 scripts/doc88_to_pdf.py "https://www.doc88.com/p-123456.html" --pages 1,20-22
+```
+
+强制指定页面走 swf2xml 修复：
+
+Force selected pages through swf2xml repair:
+
+```bash
+python -X utf8 scripts/doc88_to_pdf.py "https://www.doc88.com/p-123456.html" --force-swf2xml-pages 33,48-50
+```
+
+默认情况下，最终 PDF 会放到当前系统用户的“下载”文件夹。每个文档的过程工作目录会在运行结束时自动删除，只保留最终 PDF。
 
 By default, the final PDF is written to the current user's system Downloads folder. The per-document working folder is removed automatically at process exit, leaving only the final PDF.
 
@@ -37,126 +57,13 @@ By default, the final PDF is written to the current user's system Downloads fold
 The script does the following:
 
 1. 读取页面配置 / Reads the page configuration.
-2. 下载授权预览 EBT 分片 / Downloads the authorized preview EBT fragments.
+2. 下载授权预览 EBT 分片 / Downloads authorized preview EBT fragments.
 3. 重建每页 SWF / Rebuilds each page SWF.
 4. 用 ffdec 把 SWF 转成单页 PDF / Converts SWFs into page PDFs with ffdec.
-5. 合并单页 PDF / Merges the page PDFs.
-6. 在不栅格化的前提下压缩 PDF / Optimizes the final PDF without rasterizing it.
-7. 输出结果，并提醒你人工检查 / Prints the result and reminds you to review the pages.
-
-## 一定要人工检查 / Please Review The Output
-
-每次生成 PDF 后，都建议打开最终文件检查页面准确性，尤其注意：
-
-After each run, open the delivered PDF and check page accuracy. Pay special attention to:
-
-- 横版页面 / landscape pages
-- 公式 / formulas
-- 表格 / tables
-- 括号和标点 / brackets and punctuation
-- 摘要里列出的 `swf2xml_candidate_pages`
-
-少数 Doc88 文档会使用自定义符号字体，ffdec 有时会把这些字体映射错。常见现象是页面上多出 `]`，或者公式、括号显示不对。即使文字能复制，也不代表视觉结果一定正确。
-
-ffdec can occasionally mis-map Doc88 custom symbol fonts. A common symptom is extra `]` characters or wrong formula/bracket glyphs. The text layer may still be selectable, so selectable text alone does not guarantee visual correctness.
-
-## 常用参数 / Useful Options
-
-### 输出位置 / Output Location
-
-```bash
---output-root DIR
-```
-
-指定最终 PDF 的输出目录。默认是系统“下载”文件夹。
-
-Choose where the final PDF is written. The default is the system Downloads folder.
-
-### 保留过程文件 / Keep Intermediate Files
-
-```bash
---keep-intermediates
-```
-
-保留 EBT、SWF、单页 PDF、诊断 JSON 和运行摘要，方便排查问题。只有使用这个参数时，过程工作目录才会保留。
-
-Keep EBT files, SWFs, page PDFs, diagnostic JSON files, and the run summary for debugging. The working folder is kept only when this option is used.
-
-### 跳过压缩 / Skip Optimization
-
-```bash
---no-optimize
-```
-
-跳过最终 PDF 压缩，主要用于对比原始转换效果。
-
-Skip final PDF optimization. This is mainly useful when comparing raw conversion output.
-
-### ?? Doc88 marker ?? / Keep Doc88 Marker Watermarks
-
-```bash
---no-remove-watermark
-```
-
-????? PDF ??????????? `doc88vounge` ? `doc88vuonge` ???????????????????????????????
-
-By default, the script removes text blocks that normalize to `doc88vounge` or `doc88vuonge`. It no longer removes content merely because it is rotated, transparent, or large.
-
-### Ghostscript 压缩设置 / Ghostscript Compression Setting
-
-```bash
---gs-pdfsettings /default
---gs-pdfsettings /ebook
---gs-pdfsettings /prepress
-```
-
-ffdec-only 文档默认会用 Ghostscript 压缩，通常可以显著减小文件体积。默认值是 `/default`。
-
-ffdec-only documents are optimized with Ghostscript by default, which usually reduces file size significantly. `/default` is the default setting.
-
-## swf2xml 修复模式 / swf2xml Repair Mode
-
-大多数文档不需要 swf2xml。它默认关闭，因为 ffdec 通常更快、文件更小。
-
-Most documents do not need swf2xml. It is disabled by default because ffdec is usually smaller and faster.
-
-当某些页出现多余 `]`、横版文字错乱、公式或括号错误时，可以启用 swf2xml。它会先保留 ffdec 原页中的图片、线框和其他背景对象，删除 ffdec 的可见错误文字，再叠加从 SWF 字形轮廓重建的文字，常常能修复 ffdec 的字体映射问题。
-
-Use swf2xml when some pages show extra `]`, broken landscape text, or wrong formula/bracket glyphs. It redraws text from SWF glyph outlines while preserving images, line art, and other background objects from the original ffdec page. This often fixes ffdec font-mapping issues.
-
-### 自动修复候选页 / Automatically Repair Candidate Pages
-
-```bash
-python -X utf8 scripts/doc88_to_pdf.py "https://www.doc88.com/p-123456.html" --swf2xml-fallback
-```
-
-开启后，脚本会替换诊断认为风险较高的页面。
-
-With this enabled, the script replaces pages that diagnostics mark as risky.
-
-### 指定修复页码 / Repair Specific Pages
-
-```bash
-python -X utf8 scripts/doc88_to_pdf.py "https://www.doc88.com/p-123456.html" --force-swf2xml-pages 33,48-50
-```
-
-如果你已经知道哪些页有问题，推荐用这种方式。它比自动替换大量页面更可控。
-
-If you already know which pages are wrong, this is the recommended approach. It is more controlled than repairing many pages automatically.
-
-### 判断严格度 / Detection Strictness
-
-```bash
---swf2xml-mode conservative
---swf2xml-mode auto
---swf2xml-mode aggressive
---swf2xml-mode all
-```
-
-- `conservative`：只替换文字层明显损坏的页面 / Replaces only pages with clearly broken text layers.
-- `auto`：替换损坏页和高置信符号字体风险页 / Replaces broken text pages plus high-confidence symbol-font risk pages.
-- `aggressive`：替换更多使用可疑特殊字体的页面 / Replaces more pages that use risky special fonts.
-- `all`：替换所有静态候选页，通常更慢也更大 / Replaces every static candidate page; usually slower and larger.
+5. 按 Doc88 `pageInfo` 裁切可见页面区域 / Crops to the visible page area from Doc88 `pageInfo`.
+6. 合并单页 PDF / Merges the page PDFs.
+7. 默认进行非栅格化压缩 / Optimizes the final PDF without rasterizing it.
+8. 删除过程工作目录，只保留最终 PDF / Deletes the working folder and keeps only the final PDF.
 
 ## 输出文件 / Output Files
 
@@ -164,9 +71,9 @@ If you already know which pages are wrong, this is the recommended approach. It 
 
 By default, only the final PDF is kept.
 
-如果使用 `--keep-intermediates`，工作目录里会保留：
+使用 `--keep-intermediates` 时，下载目录下会保留 `doc88_<p_code>_ebt` 工作目录，包含：
 
-With `--keep-intermediates`, the working folder contains:
+With `--keep-intermediates`, the Downloads folder keeps a `doc88_<p_code>_ebt` working directory containing:
 
 - `index.json`：页面配置 / Page configuration.
 - `page_analysis.json`：逐页诊断 / Per-page diagnostics.
@@ -178,40 +85,67 @@ With `--keep-intermediates`, the working folder contains:
 - `xml_pages/`：swf2xml 导出的 XML 和纯 swf2xml 诊断页 / XML exported by swf2xml plus vector-only diagnostic PDFs.
 - `swf2xml_replacements.json`：替换诊断结果，包括触发原因、背景混合、保留图片/线框、隐藏文字层和优化状态 / Replacement diagnostics, including trigger reasons, background hybridization, preserved images/line art, hidden text layer, and optimization status.
 
+## swf2xml 修复模式 / swf2xml Repair Mode
+
+大多数文档不需要 swf2xml，所以默认关闭。少数文档会因为 Doc88 自定义字体导致 ffdec 显示错误，例如多出 `]`、括号错误、公式错乱、横版页文字异常。
+
+Most documents do not need swf2xml, so it is disabled by default. A few documents use Doc88 custom fonts that ffdec may mis-map, causing extra `]`, wrong brackets, broken formulas, or bad landscape-page text.
+
+swf2xml fallback 会先保留 ffdec 原页中的图片、线框和其他背景对象，删除 ffdec 的可见错误文字，再叠加从 SWF 字形轮廓重建的文字。这样通常能保持图片和表格背景，同时修复文字视觉错误。
+
+The swf2xml fallback preserves images, line art, and other background objects from the ffdec page, removes the visible ffdec text, and overlays text rebuilt from SWF glyph outlines. This usually keeps images/table backgrounds while fixing visual text errors.
+
+可用模式：
+
+Available modes:
+
+```bash
+--swf2xml-fallback
+--swf2xml-mode conservative
+--swf2xml-mode auto
+--swf2xml-mode aggressive
+--swf2xml-mode all
+--force-swf2xml-pages 1,48-50
+--skip-swf2xml-pages 8,10
+```
+
+## 常用参数 / Useful Options
+
+```bash
+--pages 1,20-22              # 只下载指定页 / selected pages only
+--output-root DIR            # 指定最终 PDF 输出目录 / output directory
+--no-optimize                # 跳过最终压缩 / skip optimization
+--gs-pdfsettings /default    # Ghostscript 压缩设置 / Ghostscript setting
+--no-remove-watermark        # 保留 doc88vounge/doc88vuonge marker 水印 / keep marker watermarks
+--keep-intermediates         # 保留过程工作目录 / keep working folder
+--keep-groups                # 保留 ffdec 分组转换目录 / keep ffdec group folders
+--no-download-tools          # 缺工具时直接失败，不自动下载 / do not auto-download tools
+```
+
 ## 工具和依赖 / Tools and Dependencies
 
-这个 skill 使用这些工具：
+脚本会优先使用 skill 本地 `.tools` 目录中的工具，缺失时按脚本内置的官方下载链接自动下载。
 
-The skill uses these tools:
+The script prefers tools under the skill-local `.tools` directory and auto-downloads missing tools from official URLs embedded in the script.
 
 - `.tools/jre17`：便携 Java 17 / Portable Java 17.
 - `.tools/ffdec`：JPEXS Free Flash Decompiler.
 - `.tools/7zip`：便携 7-Zip 命令行文件 / Portable 7-Zip command-line files.
-- Ghostscript 不随仓库打包；脚本里写有官方下载链接，需要时会自动下载 / Ghostscript is not bundled in the repository; the official download URL is embedded and used when needed.
+- Ghostscript：不随仓库打包，脚本按需自动下载 / Not bundled; auto-downloaded on demand.
 
-Python 依赖：
-
-Python packages:
+Python 依赖 / Python packages:
 
 - `requests`
 - `pypdf`
 - `PyMuPDF` / `fitz`
 - `reportlab`
 
-## 推荐用法 / Recommended Use
+## 检查输出 / Review The Output
 
-先用默认 ffdec 流程。大多数文档到这里就够了。
+每次生成 PDF 后，都建议打开最终文件检查页面准确性，尤其注意横版页面、公式、表格、括号、标点，以及摘要里列出的 `swf2xml_candidate_pages`。
 
-Start with the default ffdec workflow. This is enough for most documents.
+After each run, open the delivered PDF and check page accuracy, especially landscape pages, formulas, tables, brackets, punctuation, and pages listed in `swf2xml_candidate_pages`.
 
-如果检查后发现少数页面不对，用 `--force-swf2xml-pages` 指定这些页重跑。
+默认不要走 OCR 或纯图片转换，除非你明确接受图片型 PDF。
 
-If some pages are wrong after review, rerun with `--force-swf2xml-pages` for those pages.
-
-如果很多页都有问题，再考虑 `--swf2xml-fallback --swf2xml-mode auto` 或 `aggressive`。
-
-If many pages are wrong, consider `--swf2xml-fallback --swf2xml-mode auto` or `aggressive`.
-
-除非明确接受图片型 PDF，否则不建议走 OCR 或纯图片转换。
-
-OCR or image-only conversion is not recommended unless an image-based PDF is explicitly acceptable.
+Avoid OCR or image-only conversion by default unless an image-based PDF is explicitly acceptable.
