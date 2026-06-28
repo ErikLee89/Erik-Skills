@@ -8,6 +8,7 @@ configuration. It does not scan hidden pages or bypass login/captcha controls.
 from __future__ import annotations
 
 import argparse
+import atexit
 import base64
 import json
 import re
@@ -1371,6 +1372,8 @@ def main() -> int:
     else:
         out_dir = Path(tempfile.mkdtemp(prefix=f"doc88_{p_code}_", dir=str(output_root)))
     out_dir.mkdir(parents=True, exist_ok=True)
+    if not args.keep_intermediates:
+        atexit.register(lambda path=out_dir: shutil.rmtree(path, ignore_errors=True))
     session = requests.Session()
     session.headers.update(
         {

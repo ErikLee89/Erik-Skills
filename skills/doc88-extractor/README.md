@@ -26,9 +26,9 @@ If `m_main.init(...)` is not available, the page probably requires login or veri
 python -X utf8 scripts/doc88_to_pdf.py "https://www.doc88.com/p-123456.html"
 ```
 
-默认情况下，最终 PDF 会放到当前系统用户的“下载”文件夹。过程文件会自动删除，只保留最终 PDF。
+默认情况下，最终 PDF 会放到当前系统用户的“下载”文件夹。过程工作目录会在运行结束时自动删除，只保留最终 PDF。
 
-By default, the final PDF is written to the current user's system Downloads folder. Temporary files are removed automatically, leaving only the final PDF.
+By default, the final PDF is written to the current user's system Downloads folder. The per-document working folder is removed automatically at process exit, leaving only the final PDF.
 
 ## 默认流程 / Default Workflow
 
@@ -78,9 +78,9 @@ Choose where the final PDF is written. The default is the system Downloads folde
 --keep-intermediates
 ```
 
-保留 EBT、SWF、单页 PDF、诊断 JSON 和运行摘要，方便排查问题。
+保留 EBT、SWF、单页 PDF、诊断 JSON 和运行摘要，方便排查问题。只有使用这个参数时，过程工作目录才会保留。
 
-Keep EBT files, SWFs, page PDFs, diagnostic JSON files, and the run summary for debugging.
+Keep EBT files, SWFs, page PDFs, diagnostic JSON files, and the run summary for debugging. The working folder is kept only when this option is used.
 
 ### 跳过压缩 / Skip Optimization
 

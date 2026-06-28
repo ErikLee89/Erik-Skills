@@ -47,7 +47,7 @@ The script prints a JSON summary containing `final_pdf`, optional `optimized_pdf
 
 ## Output
 
-By default, the script leaves only the final PDF in the output root and deletes the working directory.
+By default, the script leaves only the final PDF in the output root and deletes the per-document working directory at process exit, including error exits when Python can run normal exit handlers.
 
 With `--keep-intermediates`, the script keeps `doc88_<p_code>_ebt` under the output root with:
 
