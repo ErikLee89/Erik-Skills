@@ -130,9 +130,9 @@ class XmlVectorRenderer:
     def pdf_point(self, x_twip, y_twip):
         return x_twip / TWIP, self.page_h - y_twip / TWIP
 
-    def draw_shape(self, c, shape: Shape, matrix: Matrix, force_fill=None):
+    def build_path(self, c, shape: Shape, matrix: Matrix):
         if not shape.commands:
-            return 0
+            return None
         path = c.beginPath()
         cur_pdf = (0.0, 0.0)
         started = False
@@ -161,6 +161,12 @@ class XmlVectorRenderer:
                 c2y = ey + 2.0 / 3.0 * (qy - ey)
                 path.curveTo(c1x, c1y, c2x, c2y, ex, ey)
                 cur_pdf = (ex, ey)
+        return path
+
+    def draw_shape(self, c, shape: Shape, matrix: Matrix, force_fill=None):
+        path = self.build_path(c, shape, matrix)
+        if path is None:
+            return 0
         fill = force_fill if force_fill is not None else shape.fill
         stroke = shape.stroke
         if fill is None and stroke is None:
@@ -171,6 +177,13 @@ class XmlVectorRenderer:
             c.setStrokeColor(Color(*stroke[:3], alpha=stroke[3]))
             c.setLineWidth(shape.width)
         c.drawPath(path, fill=1 if fill is not None else 0, stroke=1 if stroke is not None else 0)
+        return 1
+
+    def clip_shape(self, c, shape: Shape, matrix: Matrix):
+        path = self.build_path(c, shape, matrix)
+        if path is None:
+            return 0
+        c.clipPath(path, stroke=0, fill=0)
         return 1
 
 
@@ -357,16 +370,29 @@ def rebuild_pdf_page_from_swf_xml(xml_path: Path, out_pdf: Path, page_w: float, 
     places.sort(key=lambda p: p.depth)
     renderer = XmlVectorRenderer(page_w, page_h)
     c = canvas.Canvas(str(out_pdf), pagesize=(page_w, page_h), pageCompression=1)
-    drawn_shapes = drawn_texts = drawn_glyphs = missing = skipped_clips = 0
+    clip_places = [pl for pl in places if pl.is_clip]
+
+    def apply_active_clips(depth: int) -> int:
+        applied = 0
+        for clip in clip_places:
+            if clip.depth < depth <= (clip.clip_depth or clip.depth):
+                clip_obj = defs.get(clip.cid)
+                if isinstance(clip_obj, Shape):
+                    applied += renderer.clip_shape(c, clip_obj, clip.matrix)
+        return applied
+
+    drawn_shapes = drawn_texts = drawn_glyphs = missing = skipped_clips = applied_clips = 0
     for pl in places:
         obj = defs.get(pl.cid)
         if obj is None:
             missing += 1
             continue
+        if pl.is_clip:
+            skipped_clips += 1
+            continue
+        c.saveState()
+        applied_clips += apply_active_clips(pl.depth)
         if isinstance(obj, Shape):
-            if pl.is_clip:
-                skipped_clips += 1
-                continue
             drawn_shapes += renderer.draw_shape(c, obj, pl.matrix)
         elif isinstance(obj, TextDef):
             text_matrix = pl.matrix.mul(obj.matrix)
@@ -385,6 +411,7 @@ def rebuild_pdf_page_from_swf_xml(xml_path: Path, out_pdf: Path, page_w: float, 
                         missing += 1
                     cursor_x += adv
                 drawn_texts += 1
+        c.restoreState()
     c.showPage()
     c.save()
     return {
@@ -398,5 +425,6 @@ def rebuild_pdf_page_from_swf_xml(xml_path: Path, out_pdf: Path, page_w: float, 
         "drawn_glyphs": drawn_glyphs,
         "missing": missing,
         "skipped_clips": skipped_clips,
+        "applied_clips": applied_clips,
         "size": out_pdf.stat().st_size,
     }
