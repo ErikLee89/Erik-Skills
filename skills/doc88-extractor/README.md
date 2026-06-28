@@ -107,6 +107,7 @@ Available modes:
 --swf2xml-mode all
 --force-swf2xml-pages 1,48-50
 --skip-swf2xml-pages 8,10
+--no-auto-swf2xml-landscape
 ```
 
 ## 常用参数 / Useful Options

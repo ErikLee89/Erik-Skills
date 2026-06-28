@@ -1361,6 +1361,7 @@ def main() -> int:
     parser.add_argument("--swf2xml-mode", choices=["conservative", "auto", "aggressive", "all"], default="auto", help="Fallback detection mode used when --swf2xml-fallback is enabled. auto adds high-confidence visual glyph risk checks; conservative uses only broken text layers.")
     parser.add_argument("--force-swf2xml-pages", default="", help="Comma/range list of pages to force through swf2xml fallback, for example 1,48-50. This works even when --swf2xml-fallback is not set.")
     parser.add_argument("--skip-swf2xml-pages", default="", help="Comma/range list of pages to keep as original ffdec PDFs even if detected.")
+    parser.add_argument("--no-auto-swf2xml-landscape", action="store_true", help="Do not automatically route landscape pages through swf2xml fallback.")
     args = parser.parse_args()
 
     url = normalize_url(args.url_or_id)
@@ -1388,6 +1389,7 @@ def main() -> int:
     cfg = fetch_config(url, session)
     (out_dir / "index.json").write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
     page_count = len(decode_doc88(cfg["pageInfo"], KEY_MAIN).split(","))
+    page_sizes = page_sizes_from_config(cfg)
     selected_pages = parse_page_set(args.pages)
     invalid_pages = sorted(page for page in selected_pages if page < 1 or page > page_count)
     if invalid_pages:
@@ -1412,19 +1414,29 @@ def main() -> int:
     page_analysis = add_pdf_quality_to_analysis(out_dir, page_analysis, args.swf2xml_mode)
     force_swf2xml_pages = parse_page_set(args.force_swf2xml_pages)
     skip_swf2xml_pages = parse_page_set(args.skip_swf2xml_pages)
+    selected_pages_set = set(converted_pages)
+    landscape_swf2xml_pages = {
+        page_no
+        for page_no, (width, height) in page_sizes.items()
+        if page_no in selected_pages_set and width > height
+    }
+    if args.no_auto_swf2xml_landscape:
+        landscape_swf2xml_pages = set()
     for item in page_analysis:
         page_no = int(item["page"])
         if page_no in force_swf2xml_pages:
             item["needs_swf2xml"] = True
             item.setdefault("reasons", []).append("manual_force_swf2xml")
+        if page_no in landscape_swf2xml_pages:
+            item["needs_swf2xml"] = True
+            item.setdefault("reasons", []).append("landscape_page_auto_swf2xml")
         if page_no in skip_swf2xml_pages:
             item["needs_swf2xml"] = False
             item.setdefault("reasons", []).append("manual_skip_swf2xml")
     (out_dir / "page_analysis.json").write_text(json.dumps(page_analysis, ensure_ascii=False, indent=2), encoding="utf-8")
     swf2xml_replaced_pages: set[int] = set()
-    if args.swf2xml_fallback or force_swf2xml_pages:
+    if args.swf2xml_fallback or force_swf2xml_pages or landscape_swf2xml_pages:
         swf2xml_replaced_pages = apply_swf2xml_fallback_pages(out_dir, java, ffdec, page_analysis, zoom=args.zoom)
-    page_sizes = page_sizes_from_config(cfg)
     output_title = cfg.get("p_name") or f"doc88_{p_code}"
     if selected_pages:
         output_title = f"{output_title}_pages_{page_selection_label(selected_pages)}"
@@ -1460,7 +1472,9 @@ def main() -> int:
         "swf2xml_candidate_pages": [item["page"] for item in page_analysis if item["needs_swf2xml"]],
         "swf2xml_replaced_pages": sorted(swf2xml_replaced_pages),
         "force_swf2xml_pages": sorted(force_swf2xml_pages),
-        "swf2xml_fallback_enabled": bool(args.swf2xml_fallback or force_swf2xml_pages),
+        "auto_swf2xml_landscape_pages": sorted(landscape_swf2xml_pages),
+        "auto_swf2xml_landscape_enabled": not args.no_auto_swf2xml_landscape,
+        "swf2xml_fallback_enabled": bool(args.swf2xml_fallback or force_swf2xml_pages or landscape_swf2xml_pages),
         "swf2xml_mode": args.swf2xml_mode,
         "skip_swf2xml_pages": sorted(skip_swf2xml_pages),
         "selected_pages": sorted(selected_pages) if selected_pages else "all",
