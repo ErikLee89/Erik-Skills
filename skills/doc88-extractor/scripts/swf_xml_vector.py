@@ -71,8 +71,8 @@ def parse_matrix(el) -> Matrix:
         return Matrix()
     return Matrix(
         f(el.attrib.get("scaleX"), 1.0),
-        f(el.attrib.get("rotateSkew1"), 0.0),
         f(el.attrib.get("rotateSkew0"), 0.0),
+        f(el.attrib.get("rotateSkew1"), 0.0),
         f(el.attrib.get("scaleY"), 1.0),
         f(el.attrib.get("translateX"), 0.0),
         f(el.attrib.get("translateY"), 0.0),
@@ -108,6 +108,7 @@ class TextDef:
     cid: int
     matrix: Matrix
     records: list[TextRecord]
+    bounds: tuple[float, float, float, float] | None = None
 
 
 @dataclass
@@ -229,6 +230,15 @@ def parse_font(el) -> Font:
 def parse_text(el) -> TextDef:
     cid = i(el.attrib.get("characterID"))
     matrix = parse_matrix(child(el, "textMatrix"))
+    bounds_el = child(el, "textBounds")
+    bounds = None
+    if bounds_el is not None:
+        bounds = (
+            f(bounds_el.attrib.get("Xmin")),
+            f(bounds_el.attrib.get("Ymin")),
+            f(bounds_el.attrib.get("Xmax")),
+            f(bounds_el.attrib.get("Ymax")),
+        )
     records = []
     current_font = 0
     current_height = 1.0
@@ -258,7 +268,7 @@ def parse_text(el) -> TextDef:
                     if g.attrib.get("type") == "GLYPHENTRY":
                         entries.append((i(g.attrib.get("glyphIndex")), f(g.attrib.get("glyphAdvance"))))
             records.append(TextRecord(current_font, current_height, current_x, current_y, entries, current_color))
-    return TextDef(cid, matrix, records)
+    return TextDef(cid, matrix, records, bounds)
 
 
 def parse_line_styles(el):
@@ -372,6 +382,60 @@ def rebuild_pdf_page_from_swf_xml(xml_path: Path, out_pdf: Path, page_w: float, 
     c = canvas.Canvas(str(out_pdf), pagesize=(page_w, page_h), pageCompression=1)
     clip_places = [pl for pl in places if pl.is_clip]
 
+    def shape_bbox(shape: Shape, matrix: Matrix):
+        xs = []
+        ys = []
+        for cmd in shape.commands:
+            points = []
+            if cmd[0] in {"M", "L"}:
+                points = [(cmd[1], cmd[2])]
+            elif cmd[0] == "Q":
+                points = [(cmd[1], cmd[2]), (cmd[3], cmd[4])]
+            for x, y in points:
+                px, py = matrix.apply(x, y)
+                xs.append(px)
+                ys.append(py)
+        if not xs:
+            return None
+        return min(xs), min(ys), max(xs), max(ys)
+
+    def union_bbox(boxes):
+        boxes = [box for box in boxes if box is not None]
+        if not boxes:
+            return None
+        return min(box[0] for box in boxes), min(box[1] for box in boxes), max(box[2] for box in boxes), max(box[3] for box in boxes)
+
+    def text_bbox(text: TextDef, text_matrix: Matrix):
+        boxes = []
+        for rec in text.records:
+            font = fonts.get(rec.font_id)
+            if not font:
+                continue
+            cursor_x = rec.x
+            scale = rec.text_height / 1024.0
+            for glyph_index, adv in rec.entries:
+                if glyph_index < len(font.glyphs):
+                    glyph_matrix = text_matrix.mul(Matrix(scale, 0, 0, scale, cursor_x, rec.y))
+                    boxes.append(shape_bbox(font.glyphs[glyph_index], glyph_matrix))
+                cursor_x += adv
+        return union_bbox(boxes)
+
+    def align_text_matrix_to_bounds(text: TextDef, local_matrix: Matrix):
+        if text.bounds is None:
+            return local_matrix, False
+        bbox = text_bbox(text, local_matrix)
+        if bbox is None:
+            return local_matrix, False
+        bx = (bbox[0] + bbox[2]) / 2.0
+        by = (bbox[1] + bbox[3]) / 2.0
+        tx = (text.bounds[0] + text.bounds[2]) / 2.0
+        ty = (text.bounds[1] + text.bounds[3]) / 2.0
+        dx = tx - bx
+        dy = ty - by
+        if abs(dx) < 1.0 and abs(dy) < 1.0:
+            return local_matrix, False
+        return Matrix(1, 0, 0, 1, dx, dy).mul(local_matrix), True
+
     def apply_active_clips(depth: int) -> int:
         applied = 0
         for clip in clip_places:
@@ -381,7 +445,7 @@ def rebuild_pdf_page_from_swf_xml(xml_path: Path, out_pdf: Path, page_w: float, 
                     applied += renderer.clip_shape(c, clip_obj, clip.matrix)
         return applied
 
-    drawn_shapes = drawn_texts = drawn_glyphs = missing = skipped_clips = applied_clips = 0
+    drawn_shapes = drawn_texts = drawn_glyphs = missing = skipped_clips = applied_clips = bounds_aligned_texts = 0
     for pl in places:
         obj = defs.get(pl.cid)
         if obj is None:
@@ -391,11 +455,14 @@ def rebuild_pdf_page_from_swf_xml(xml_path: Path, out_pdf: Path, page_w: float, 
             skipped_clips += 1
             continue
         c.saveState()
-        applied_clips += apply_active_clips(pl.depth)
         if isinstance(obj, Shape):
+            applied_clips += apply_active_clips(pl.depth)
             drawn_shapes += renderer.draw_shape(c, obj, pl.matrix)
         elif isinstance(obj, TextDef):
-            text_matrix = pl.matrix.mul(obj.matrix)
+            aligned_local_matrix, aligned = align_text_matrix_to_bounds(obj, obj.matrix)
+            text_matrix = pl.matrix.mul(aligned_local_matrix)
+            if aligned:
+                bounds_aligned_texts += 1
             for rec in obj.records:
                 font = fonts.get(rec.font_id)
                 if not font:
@@ -426,5 +493,6 @@ def rebuild_pdf_page_from_swf_xml(xml_path: Path, out_pdf: Path, page_w: float, 
         "missing": missing,
         "skipped_clips": skipped_clips,
         "applied_clips": applied_clips,
+        "bounds_aligned_texts": bounds_aligned_texts,
         "size": out_pdf.stat().st_size,
     }
